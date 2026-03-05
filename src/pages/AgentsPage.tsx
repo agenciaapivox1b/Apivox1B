@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import type { Bot } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,12 +14,16 @@ import { Plus, MoreHorizontal, Copy, Trash2, Pause, Pencil, MessageSquare, Users
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import AgentDetailPanel from '@/components/AgentDetailPanel';
 import { AgentWizard } from '@/components/agents/AgentWizard';
+import { AgentControlsCard } from '@/components/agents/AgentControlsCard';
 
 export default function AgentsPage() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
+  const navigate = useNavigate();
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testBot, setTestBot] = useState<Bot | null>(null);
 
   useEffect(() => {
     api.getBots().then((b) => { setBots(b); setLoading(false); });
@@ -27,6 +32,19 @@ export default function AgentsPage() {
   const handleToggle = async (id: string, active: boolean) => {
     const updated = await api.toggleBot(id, active);
     setBots(prev => prev.map(b => b.id === id ? updated : b));
+  };
+
+  const handleUpdateWebhook = (id: string, url: string) => {
+    setBots(prev => prev.map(b => b.id === id ? Object.assign({}, b, { webhook_url: url }) : b));
+  };
+
+  const handleOpenTest = (bot: Bot) => {
+    setTestBot(bot);
+    setTestModalOpen(true);
+  };
+
+  const handleViewConversations = (bot: Bot) => {
+    navigate(`/inbox?agent=${bot.id}`);
   };
 
   if (loading) return <div className="p-8 text-muted-foreground">Carregando...</div>;
@@ -60,6 +78,7 @@ export default function AgentsPage() {
           // Mock save
           const bot: Bot = {
             id: Date.now().toString(),
+            client_id: 'mock-client-id',
             name: newBot.name || 'Novo Agente',
             prompt: newBot.prompt || '',
             status: newBot.status || 'draft',
@@ -75,50 +94,34 @@ export default function AgentsPage() {
         }}
       />
 
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
         {bots.map((bot) => (
-          <Card key={bot.id} className="bg-card border-border hover:border-primary/20 transition-colors cursor-pointer" onClick={() => setSelectedBot(bot)}>
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-medium text-foreground">{bot.name}</h3>
-                  <Badge variant="outline" className={`mt-1.5 text-xs ${statusColor(bot.status)}`}>
-                    {bot.status}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <Switch checked={bot.is_active} onCheckedChange={(v) => handleToggle(bot.id, v)} />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setSelectedBot(bot)}><Settings className="h-3.5 w-3.5 mr-2" /> Configurar</DropdownMenuItem>
-                      <DropdownMenuItem><Activity className="h-3.5 w-3.5 mr-2" /> Testar</DropdownMenuItem>
-                      <DropdownMenuItem><MessageSquare className="h-3.5 w-3.5 mr-2" /> Ver conversas</DropdownMenuItem>
-                      <DropdownMenuItem><Copy className="h-3.5 w-3.5 mr-2" /> Duplicar</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive"><Trash2 className="h-3.5 w-3.5 mr-2" /> Arquivar</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-
-              <p className="text-xs text-muted-foreground line-clamp-2 mb-4">{bot.prompt}</p>
-
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" /> {bot.messages_count.toLocaleString()}</span>
-                <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {bot.conversations_count.toLocaleString()}</span>
-              </div>
-
-              <p className="text-xs text-muted-foreground mt-3">
-                Criado em {new Date(bot.created_at).toLocaleDateString()}
-              </p>
-            </CardContent>
-          </Card>
+          <AgentControlsCard
+            key={bot.id}
+            bot={bot}
+            onToggle={handleToggle}
+            onClickConfig={(b) => setSelectedBot(b)}
+            onUpdateWebhook={handleUpdateWebhook}
+            onClickTest={handleOpenTest}
+            onClickConversations={handleViewConversations}
+          />
         ))}
       </div>
+
+      <Dialog open={testModalOpen} onOpenChange={setTestModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Testar Agente - {testBot?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="py-6 flex flex-col items-center justify-center space-y-4">
+            <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
+            <p className="text-center text-sm text-muted-foreground">
+              O simulador de conversas está carregando...<br />
+              Este espaço permitirá testar o bot &quot;{testBot?.name}&quot; livremente.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
