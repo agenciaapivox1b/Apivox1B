@@ -50,24 +50,22 @@ npm run dev
 - Click on "New codespace" to launch a new Codespace environment.
 - Edit files directly within the Codespace and commit and push your changes once you're done.
 
-## What technologies are used for this project?
+## Autenticação (Supabase Auth)
 
-This project is built with:
+Este projeto utiliza Supabase para autenticação. Para rodar localmente, você precisa configurar as variáveis de ambiente.
+
+### Passos para configurar:
+
+1. Crie um arquivo `.env` na raiz do projeto baseado no `.env.example`.
+2. Preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` com as chaves do seu projeto no dashboard do Supabase.
+3. **Google OAuth**: Para o login com Google funcionar, configure o provedor no Supabase Dashboard (Authentication -> Providers -> Google) e adicione a URL de redirecionamento: `http://localhost:5173/`.
+
+### Tecnologias utilizadas:
 
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
+- **Supabase Auth**
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

@@ -4,7 +4,18 @@ import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter, useSidebar,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, Bot, Inbox, BarChart3, Plug, BookOpen, LogOut } from 'lucide-react';
+import { LayoutDashboard, Bot, Inbox, BarChart3, Plug, BookOpen, LogOut, Search, Settings, HelpCircle, User as UserIcon } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import apivoxLogo from '@/assets/apivox-logo.png';
 
 const navItems = [
@@ -19,6 +30,18 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast.success("Sessão encerrada");
+      navigate('/login');
+    } catch (error) {
+      toast.error("Erro ao sair");
+    }
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-card">
@@ -58,23 +81,43 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border p-4">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-xs font-semibold text-primary">JD</span>
-          </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">John Doe</p>
-              <p className="text-xs text-muted-foreground truncate">john@apivox.com</p>
-            </div>
-          )}
-          {!collapsed && (
-            <button className="text-muted-foreground hover:text-foreground transition-colors">
-              <LogOut className="h-4 w-4" />
+      <SidebarFooter className="border-t border-border p-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-secondary transition-colors outline-none text-left">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
+                <span className="text-xs font-semibold text-primary">
+                  {user?.email?.substring(0, 2).toUpperCase() || 'AX'}
+                </span>
+              </div>
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {user?.user_metadata?.full_name || 'Usuário Apivox'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                </div>
+              )}
             </button>
-          )}
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 mb-2">
+            <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer gap-2">
+              <UserIcon className="h-4 w-4" /> Perfil
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2">
+              <Settings className="h-4 w-4" /> Configurações
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4" /> Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
   );
