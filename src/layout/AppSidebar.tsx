@@ -12,7 +12,6 @@ const navItems = [
   { title: 'Agentes', url: '/agents', icon: Bot },
   { title: 'Caixa de Entrada', url: '/inbox', icon: Inbox },
   { title: 'Métricas', url: '/analytics', icon: BarChart3 },
-  { title: 'Conexões', url: '/integrations', icon: Plug },
   { title: 'Base de Conhecimento', url: '/knowledge', icon: BookOpen },
 ];
 
