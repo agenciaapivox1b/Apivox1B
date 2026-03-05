@@ -5,9 +5,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Webhook, Users, Calendar } from 'lucide-react';
+import { Webhook, Users, Calendar, type LucideIcon } from 'lucide-react';
 
-const iconMap: Record<string, any> = { webhook: Webhook, users: Users, calendar: Calendar };
+const iconMap: Record<string, LucideIcon> = { webhook: Webhook, users: Users, calendar: Calendar };
 
 const logs = [
   { id: '1', integration: 'Automação (Webhook)', event: 'Novo lead sincronizado', status: 'success', timestamp: '2026-03-05T14:00:00Z' },

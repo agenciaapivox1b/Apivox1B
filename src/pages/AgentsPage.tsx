@@ -29,7 +29,7 @@ export default function AgentsPage() {
     setBots(prev => prev.map(b => b.id === id ? updated : b));
   };
 
-  if (loading) return <div className="p-8 text-muted-foreground">Loading...</div>;
+  if (loading) return <div className="p-8 text-muted-foreground">Carregando...</div>;
 
   if (selectedBot) {
     return <AgentDetailPanel bot={selectedBot} onBack={() => setSelectedBot(null)} />;
@@ -68,8 +68,7 @@ export default function AgentsPage() {
             updated_at: new Date().toISOString(),
             messages_count: 0,
             conversations_count: 0,
-            webhook_url: '',
-            business_hours: {},
+            business_hours: '',
             fallback_message: ''
           };
           setBots([bot, ...bots]);
