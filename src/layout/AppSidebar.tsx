@@ -8,12 +8,12 @@ import { LayoutDashboard, Bot, Inbox, BarChart3, Plug, BookOpen, LogOut } from '
 import apivoxLogo from '@/assets/apivox-logo.png';
 
 const navItems = [
-  { title: 'Overview', url: '/', icon: LayoutDashboard },
-  { title: 'Agents', url: '/agents', icon: Bot },
-  { title: 'Inbox', url: '/inbox', icon: Inbox },
-  { title: 'Analytics', url: '/analytics', icon: BarChart3 },
-  { title: 'Integrations', url: '/integrations', icon: Plug },
-  { title: 'Knowledge Base', url: '/knowledge', icon: BookOpen },
+  { title: 'Visão Geral', url: '/', icon: LayoutDashboard },
+  { title: 'Agentes', url: '/agents', icon: Bot },
+  { title: 'Caixa de Entrada', url: '/inbox', icon: Inbox },
+  { title: 'Métricas', url: '/analytics', icon: BarChart3 },
+  { title: 'Integrações', url: '/integrations', icon: Plug },
+  { title: 'Base de Conhecimento', url: '/knowledge', icon: BookOpen },
 ];
 
 export function AppSidebar() {
@@ -24,8 +24,11 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-card">
       <div className="flex items-center gap-2 px-4 py-5 border-b border-border">
-        <img src={apivoxLogo} alt="APIVOX" className="h-8 w-8 rounded object-contain" />
-        {!collapsed && <span className="text-lg font-semibold text-foreground tracking-tight">APIVOX</span>}
+        {!collapsed ? (
+          <span className="text-xl font-bold text-foreground tracking-tight">APIVOX</span>
+        ) : (
+          <img src={apivoxLogo} alt="APIVOX" className="h-8 w-8 rounded object-contain" />
+        )}
       </div>
 
       <SidebarContent className="px-2 pt-4">
@@ -33,7 +36,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = location.pathname === item.url || 
+                const isActive = location.pathname === item.url ||
                   (item.url !== '/' && location.pathname.startsWith(item.url));
                 return (
                   <SidebarMenuItem key={item.title}>

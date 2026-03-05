@@ -3,17 +3,17 @@ import { mockChartData } from '@/services/mockData';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 const topQuestions = [
-  { question: 'What are your business hours?', count: 142 },
-  { question: 'How do I track my order?', count: 98 },
-  { question: 'What is your refund policy?', count: 87 },
-  { question: 'Do you offer free shipping?', count: 76 },
-  { question: 'How to reset password?', count: 65 },
+  { question: 'Qual o horário de funcionamento?', count: 142 },
+  { question: 'Como rastrear meu pedido?', count: 98 },
+  { question: 'Qual a política de reembolso?', count: 87 },
+  { question: 'Vocês oferecem frete grátis?', count: 76 },
+  { question: 'Como redefinir a senha?', count: 65 },
 ];
 
 const failedQuestions = [
-  { question: 'Can I integrate with SAP?', count: 23 },
-  { question: 'Do you support crypto payments?', count: 18 },
-  { question: 'What is the API rate limit?', count: 12 },
+  { question: 'Posso integrar com o SAP?', count: 23 },
+  { question: 'Vocês aceitam criptomoedas?', count: 18 },
+  { question: 'Qual o limite da API?', count: 12 },
 ];
 
 const responseTimeData = [
@@ -29,17 +29,17 @@ export default function AnalyticsPage() {
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Analytics</h1>
-        <p className="text-sm text-muted-foreground mt-1">Insights into your AI agents performance</p>
+        <h1 className="text-2xl font-semibold text-foreground">Métricas</h1>
+        <p className="text-sm text-muted-foreground mt-1">Análises de desempenho dos seus agentes</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Avg Response Time', value: '0.6s' },
-          { label: 'Automation Rate', value: '87.3%' },
-          { label: 'Handoff Rate', value: '12.7%' },
-          { label: 'Resolution Rate', value: '94.2%' },
+          { label: 'Tempo Médio de Resposta', value: '0.6s' },
+          { label: 'Taxa de Automação', value: '87.3%' },
+          { label: 'Taxa de Transbordo', value: '12.7%' },
+          { label: 'Taxa de Resolução', value: '94.2%' },
         ].map((m) => (
           <Card key={m.label} className="bg-card border-border">
             <CardContent className="p-4">
@@ -53,7 +53,7 @@ export default function AnalyticsPage() {
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="bg-card border-border">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Conversations per Day</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Conversas por Dia</CardTitle></CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +70,7 @@ export default function AnalyticsPage() {
         </Card>
 
         <Card className="bg-card border-border">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Avg Response Time (seconds)</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Tempo Médio de Resposta (s)</CardTitle></CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -90,7 +90,7 @@ export default function AnalyticsPage() {
       {/* Tables */}
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="bg-card border-border">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Top Questions</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Perguntas Frequentes</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-2">
               {topQuestions.map((q, i) => (
@@ -104,7 +104,7 @@ export default function AnalyticsPage() {
         </Card>
 
         <Card className="bg-card border-border">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Failed Questions</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Perguntas sem Resposta</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-2">
               {failedQuestions.map((q, i) => (

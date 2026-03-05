@@ -54,9 +54,9 @@ export const mockMessages: Record<string, Message[]> = {
 };
 
 export const mockIntegrations: Integration[] = [
-  { id: '1', name: 'n8n Webhook', description: 'Automate workflows with n8n', icon: 'webhook', status: 'connected', enabled: true, last_sync: '2026-03-05T14:00:00Z' },
-  { id: '2', name: 'CRM', description: 'Sync contacts and leads', icon: 'users', status: 'connected', enabled: true, last_sync: '2026-03-05T13:30:00Z' },
-  { id: '3', name: 'Google Calendar', description: 'Schedule appointments', icon: 'calendar', status: 'disconnected', enabled: false },
+  { id: '1', name: 'Automação (Webhook)', description: 'Automatize fluxos com n8n/Make', icon: 'webhook', status: 'connected', enabled: true, last_sync: '2026-03-05T14:00:00Z' },
+  { id: '2', name: 'CRM (Clientes e Leads)', description: 'Sincronizar contatos e leads', icon: 'users', status: 'connected', enabled: true, last_sync: '2026-03-05T13:30:00Z' },
+  { id: '3', name: 'Agenda (Google Calendar)', description: 'Agendar appointments', icon: 'calendar', status: 'disconnected', enabled: false },
 ];
 
 export const mockKnowledgeBase: KnowledgeItem[] = [

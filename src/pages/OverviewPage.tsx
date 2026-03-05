@@ -20,23 +20,23 @@ export default function OverviewPage() {
   }, []);
 
   if (loading || !metrics) {
-    return <div className="p-8 flex items-center justify-center h-full"><div className="text-muted-foreground">Loading...</div></div>;
+    return <div className="p-8 flex items-center justify-center h-full"><div className="text-muted-foreground">Carregando...</div></div>;
   }
 
   const metricCards = [
-    { label: 'Active Agents', value: metrics.activeAgents, icon: Bot, change: 0 },
-    { label: 'Active Conversations', value: metrics.activeConversations, icon: MessageSquare, change: 12 },
-    { label: 'Messages Today', value: metrics.messagesToday, icon: Mail, change: 8.5 },
-    { label: 'Leads Captured', value: metrics.leadsCaptured, icon: Target, change: 22 },
-    { label: 'Automation Rate', value: `${metrics.automationRate}%`, icon: Zap, change: 3.2 },
-    { label: 'Handoff Rate', value: `${metrics.handoffRate}%`, icon: Users, change: -5.1 },
+    { label: 'Agentes Ativos', value: metrics.activeAgents, icon: Bot, change: 0 },
+    { label: 'Conversas Ativas', value: metrics.activeConversations, icon: MessageSquare, change: 12 },
+    { label: 'Mensagens Hoje', value: metrics.messagesToday, icon: Mail, change: 8.5 },
+    { label: 'Leads Capturados', value: metrics.leadsCaptured, icon: Target, change: 22 },
+    { label: 'Taxa de Automação', value: `${metrics.automationRate}%`, icon: Zap, change: 3.2 },
+    { label: 'Transbordo (Handoff)', value: `${metrics.handoffRate}%`, icon: Users, change: -5.1 },
   ];
 
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Overview</h1>
-        <p className="text-sm text-muted-foreground mt-1">Monitor your AI agents performance</p>
+        <h1 className="text-2xl font-semibold text-foreground">Visão Geral</h1>
+        <p className="text-sm text-muted-foreground mt-1">Monitore o desempenho dos seus agentes</p>
       </div>
 
       {/* Metrics Grid */}
@@ -63,7 +63,7 @@ export default function OverviewPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-foreground">Messages per Day</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground">Mensagens por Dia</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -82,7 +82,7 @@ export default function OverviewPage() {
 
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-foreground">Peak Hours</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground">Horários de Pico</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -103,15 +103,14 @@ export default function OverviewPage() {
       {/* Activity Feed */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-foreground">Recent Activity</CardTitle>
+          <CardTitle className="text-sm font-medium text-foreground">Atividades Recentes</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             {activities.map((a) => (
               <div key={a.id} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
-                <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${
-                  a.type === 'conversation' ? 'bg-primary' : a.type === 'agent' ? 'bg-brand-green-secondary' : 'bg-accent'
-                }`} />
+                <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${a.type === 'conversation' ? 'bg-primary' : a.type === 'agent' ? 'bg-brand-green-secondary' : 'bg-accent'
+                  }`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-foreground">{a.description}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
