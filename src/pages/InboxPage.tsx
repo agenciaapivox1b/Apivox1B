@@ -1,32 +1,33 @@
-import { useEffect, useState } from 'react';
-import { api } from '@/services/api';
+import { useState } from 'react';
+import { useInbox } from '@/hooks/useInbox';
 import type { Conversation, Message } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, UserCheck, CheckCircle, StickyNote, Tag, Download } from 'lucide-react';
+import { Send, UserCheck, CheckCircle, StickyNote, Tag, Download, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
+import { toast } from 'sonner';
 
 const statusFilters = ['all', 'active', 'waiting_human', 'resolved', 'vip'] as const;
 
 export default function InboxPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const {
+    conversations,
+    messages,
+    selectedId,
+    setSelectedId,
+    loading,
+    messagesLoading
+  } = useInbox();
+
   const [filter, setFilter] = useState<string>('all');
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api.getConversations(filter).then((c) => { setConversations(c); setLoading(false); });
-  }, [filter]);
+  const filteredConversations = conversations.filter(c => {
+    if (filter === 'all') return true;
+    return c.status === filter;
+  });
 
-  useEffect(() => {
-    if (selected) {
-      api.getMessages(selected).then(setMessages);
-    }
-  }, [selected]);
-
-  const selectedConv = conversations.find(c => c.id === selected);
+  const selectedConv = conversations.find(c => c.id === selectedId);
 
   const statusBadge = (s: string) => {
     const map: Record<string, string> = {
@@ -37,6 +38,23 @@ export default function InboxPage() {
     };
     return map[s] || '';
   };
+
+  const handleSend = () => {
+    if (!newMessage.trim()) return;
+    toast.info('O envio manual de mensagens será conectado na próxima etapa 🚀');
+    setNewMessage('');
+  };
+
+  if (loading && conversations.length === 0) {
+    return (
+      <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Carregando conversas reais...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
@@ -59,13 +77,16 @@ export default function InboxPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin">
-          {loading ? (
-            <p className="text-sm text-muted-foreground p-4">Carregando...</p>
-          ) : conversations.map((conv) => (
+          {filteredConversations.length === 0 ? (
+            <div className="p-8 text-center">
+              <MessageSquare className="h-8 w-8 text-muted-foreground mx-auto mb-3 opacity-20" />
+              <p className="text-sm text-muted-foreground">Nenhuma conversa encontrada</p>
+            </div>
+          ) : filteredConversations.map((conv) => (
             <button
               key={conv.id}
-              onClick={() => setSelected(conv.id)}
-              className={`w-full text-left p-4 border-b border-border hover:bg-secondary/50 transition-colors ${selected === conv.id ? 'bg-secondary' : ''
+              onClick={() => setSelectedId(conv.id)}
+              className={`w-full text-left p-4 border-b border-border hover:bg-secondary/50 transition-colors ${selectedId === conv.id ? 'bg-secondary' : ''
                 }`}
             >
               <div className="flex items-start justify-between mb-1">
@@ -89,10 +110,16 @@ export default function InboxPage() {
       </div>
 
       {/* Right Panel - Messages */}
-      <div className="flex-1 flex flex-col">
-        {!selected || !selectedConv ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">Selecione uma conversa</p>
+      <div className="flex-1 flex flex-col bg-background/50">
+        {!selectedId || !selectedConv ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <div className="bg-muted/50 p-4 rounded-full mb-4">
+              <MessageSquare className="h-8 w-8 text-muted-foreground opacity-50" />
+            </div>
+            <h3 className="text-lg font-medium">Suas conversas aparecem aqui</h3>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Selecione um contato na lista ao lado para ver o histórico de mensagens real do Supabase.
+            </p>
           </div>
         ) : (
           <>
@@ -105,42 +132,55 @@ export default function InboxPage() {
               <div className="flex gap-1">
                 <Button variant="ghost" size="sm" className="gap-1 text-xs"><UserCheck className="h-3.5 w-3.5" /> Atribuir</Button>
                 <Button variant="ghost" size="sm" className="gap-1 text-xs"><CheckCircle className="h-3.5 w-3.5" /> Resolver</Button>
-                <Button variant="ghost" size="sm" className="gap-1 text-xs"><StickyNote className="h-3.5 w-3.5" /> Nota</Button>
-                <Button variant="ghost" size="sm" className="gap-1 text-xs"><Tag className="h-3.5 w-3.5" /> Tag</Button>
-                <Button variant="ghost" size="sm" className="gap-1 text-xs"><Download className="h-3.5 w-3.5" /> Exportar</Button>
+                <Button variant="ghost" size="sm" className="gap-1 text-xs invisible md:visible"><StickyNote className="h-3.5 w-3.5" /> Nota</Button>
+                <Button variant="ghost" size="sm" className="gap-1 text-xs invisible md:visible"><Tag className="h-3.5 w-3.5" /> Tag</Button>
               </div>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`max-w-[70%] px-3.5 py-2.5 rounded-2xl text-sm ${msg.sender === 'user'
-                      ? 'bg-secondary text-foreground rounded-bl-md'
-                      : msg.sender === 'bot'
-                        ? 'bg-primary text-primary-foreground rounded-br-md'
-                        : 'bg-brand-green-secondary/10 text-foreground border border-brand-green-secondary/20 rounded-br-md'
-                    }`}>
-                    <p>{msg.content}</p>
-                    <p className={`text-[10px] mt-1 ${msg.sender === 'user' ? 'text-muted-foreground' : 'opacity-70'}`}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
+              {messagesLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary/50" />
                 </div>
-              ))}
+              ) : messages.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-sm text-muted-foreground">Nenhuma mensagem nesta conversa.</p>
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[70%] px-3.5 py-2.5 rounded-2xl text-sm ${msg.sender === 'user'
+                      ? 'bg-secondary text-foreground rounded-bl-md'
+                      : 'bg-primary text-primary-foreground rounded-br-md'
+                      }`}>
+                      <p>{msg.content}</p>
+                      <p className={`text-[10px] mt-1 ${msg.sender === 'user' ? 'text-muted-foreground' : 'opacity-70'}`}>
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Input */}
             <div className="p-4 border-t border-border bg-card">
-              <div className="flex gap-2">
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSend();
+                }}
+              >
                 <Input
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Digite uma mensagem..."
                   className="flex-1"
                 />
-                <Button size="icon"><Send className="h-4 w-4" /></Button>
-              </div>
+                <Button type="submit" size="icon"><Send className="h-4 w-4" /></Button>
+              </form>
             </div>
           </>
         )}

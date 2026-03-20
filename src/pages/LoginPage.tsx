@@ -31,8 +31,12 @@ export default function LoginPage() {
                     setError("E-mail ou senha incorretos.");
                 } else if (error.message === "User not found") {
                     setError("Usuário não encontrado.");
+                } else if (error.message === "Email not confirmed") {
+                    setError("Por favor, verifique sua caixa de entrada e confirme seu e-mail antes de logar.");
+                } else if (error.message === "Invalid email or password") {
+                    setError("Dados de acesso inválidos. Verifique seu e-mail e senha.");
                 } else {
-                    setError(error.message);
+                    setError("Erro: " + error.message);
                 }
                 return;
             }

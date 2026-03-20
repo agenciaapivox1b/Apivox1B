@@ -13,6 +13,7 @@ export interface Bot {
   status: 'active' | 'paused' | 'draft';
   is_active: boolean;
   prompt: string;
+  webhook_url?: string;
   fallback_message: string;
   business_hours: string;
   created_at: string;

@@ -14,6 +14,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <header className="h-14 flex items-center border-b border-border bg-card px-4 shrink-0">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
           </header>
+
+
           <main className="flex-1 overflow-auto">
             <div className="animate-fade-in">
               {children}

@@ -1,41 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/services/api';
+import { useBots } from '@/hooks/useBots';
+import { useChat } from '@/hooks/useChat';
 import type { Bot } from '@/types';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Plus, MoreHorizontal, Copy, Trash2, Pause, Pencil, MessageSquare, Users, Settings, Activity } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Plus, Activity, Loader2, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import AgentDetailPanel from '@/components/AgentDetailPanel';
 import { AgentWizard } from '@/components/agents/AgentWizard';
 import { AgentControlsCard } from '@/components/agents/AgentControlsCard';
+import { AgentTestChat } from '@/components/agents/AgentTestChat';
 
 export default function AgentsPage() {
-  const [bots, setBots] = useState<Bot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { bots, loading, error, addBot, toggleBot, removeBot } = useBots();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const navigate = useNavigate();
   const [testModalOpen, setTestModalOpen] = useState(false);
   const [testBot, setTestBot] = useState<Bot | null>(null);
 
-  useEffect(() => {
-    api.getBots().then((b) => { setBots(b); setLoading(false); });
-  }, []);
-
   const handleToggle = async (id: string, active: boolean) => {
-    const updated = await api.toggleBot(id, active);
-    setBots(prev => prev.map(b => b.id === id ? updated : b));
+    await toggleBot(id, active);
+  };
+
+  const handleArchive = async (id: string) => {
+    await removeBot(id);
   };
 
   const handleUpdateWebhook = (id: string, url: string) => {
-    setBots(prev => prev.map(b => b.id === id ? Object.assign({}, b, { webhook_url: url }) : b));
+    toast.info('Para editar o Webhook, use as configurações do agente.');
   };
 
   const handleOpenTest = (bot: Bot) => {
@@ -44,20 +38,35 @@ export default function AgentsPage() {
   };
 
   const handleViewConversations = (bot: Bot) => {
-    navigate(`/inbox?agent=${bot.id}`);
+    toast.info('A Inbox real será conectada na próxima etapa 🚀');
+    // navigate(`/inbox?agent=${bot.id}`); 
   };
 
-  if (loading) return <div className="p-8 text-muted-foreground">Carregando...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Carregando agentes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] p-6 text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Erro ao carregar dados</h2>
+        <p className="text-muted-foreground max-w-md mb-6">{error}</p>
+        <Button onClick={() => window.location.reload()}>Tentar Novamente</Button>
+      </div>
+    );
+  }
 
   if (selectedBot) {
     return <AgentDetailPanel bot={selectedBot} onBack={() => setSelectedBot(null)} />;
   }
-
-  const statusColor = (s: string) => {
-    if (s === 'active') return 'bg-brand-green-secondary/10 text-brand-green-secondary border-brand-green-secondary/20';
-    if (s === 'paused') return 'bg-muted text-muted-foreground border-border';
-    return 'bg-muted text-muted-foreground border-border';
-  };
 
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-7xl">
@@ -74,52 +83,47 @@ export default function AgentsPage() {
       <AgentWizard
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSave={(newBot) => {
-          // Mock save
-          const bot: Bot = {
-            id: Date.now().toString(),
-            client_id: 'mock-client-id',
-            name: newBot.name || 'Novo Agente',
-            prompt: newBot.prompt || '',
-            status: newBot.status || 'draft',
-            is_active: newBot.is_active || false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            messages_count: 0,
-            conversations_count: 0,
-            business_hours: '',
-            fallback_message: ''
-          };
-          setBots([bot, ...bots]);
+        onSave={async (newBot) => {
+          await addBot({
+            name: newBot.name,
+            prompt: newBot.prompt,
+            status: 'active',
+            is_active: true
+          });
+          setCreateOpen(false);
         }}
       />
 
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {bots.map((bot) => (
-          <AgentControlsCard
-            key={bot.id}
-            bot={bot}
-            onToggle={handleToggle}
-            onClickConfig={(b) => setSelectedBot(b)}
-            onUpdateWebhook={handleUpdateWebhook}
-            onClickTest={handleOpenTest}
-            onClickConversations={handleViewConversations}
-          />
-        ))}
-      </div>
+      {bots.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-border rounded-xl p-8 text-center bg-card/50">
+          <Activity className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+          <h3 className="text-lg font-medium">Nenhum agente encontrado</h3>
+          <p className="text-muted-foreground mb-6">Crie seu primeiro assistente de IA para começar.</p>
+          <Button onClick={() => setCreateOpen(true)}>Criar primeiro agente</Button>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {bots.map((bot) => (
+            <AgentControlsCard
+              key={bot.id}
+              bot={bot}
+              onToggle={handleToggle}
+              onClickConfig={(b) => setSelectedBot(b)}
+              onUpdateWebhook={handleUpdateWebhook}
+              onClickTest={handleOpenTest}
+              onClickConversations={handleViewConversations}
+              onArchive={handleArchive}
+            />
+          ))}
+        </div>
+      )}
 
       <Dialog open={testModalOpen} onOpenChange={setTestModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Testar Agente - {testBot?.name}</DialogTitle>
           </DialogHeader>
-          <div className="py-6 flex flex-col items-center justify-center space-y-4">
-            <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
-            <p className="text-center text-sm text-muted-foreground">
-              O simulador de conversas está carregando...<br />
-              Este espaço permitirá testar o bot &quot;{testBot?.name}&quot; livremente.
-            </p>
-          </div>
+          {testBot && <AgentTestChat bot={testBot} />}
         </DialogContent>
       </Dialog>
     </div>
