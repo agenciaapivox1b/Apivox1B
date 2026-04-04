@@ -75,3 +75,207 @@ export interface ActivityItem {
   description: string;
   timestamp: string;
 }
+
+/**
+ * ENUM: Geração de Cobrança
+ * Modelo A: Sistema define o método de pagamento
+ * Modelo B: Cliente escolhe o método de pagamento
+ */
+export type ChargeGenerationMode = 'predefined' | 'client_choice';
+
+/**
+ * INTERFACE: Detalhes da Forma de Pagamento
+ * Dados reais da cobrança gerada (boleto, PIX, link, etc)
+ */
+export interface PaymentMethodDetails {
+  method: 'pix' | 'boleto' | 'credit_card' | 'transfer' | 'cash' | 'pending';
+  provider?: 'asaas' | 'mercadopago' | 'stripe' | 'manual' | 'other';
+  externalId?: string;
+  reference?: string;
+  pixCode?: string;
+  pixQrCode?: string;
+  boletoLine?: string;
+  boletoBarcode?: string;
+  paymentLink?: string;
+  cardLastFour?: string;
+  bankAccountNumber?: string;
+  bankRoutingNumber?: string;
+  generatedAt?: string;
+  expiresAt?: string;
+}
+
+/**
+ * INTERFACE: Ação Agendada Automática
+ * Próximas ações que serão executadas automaticamente
+ */
+export interface ScheduledAction {
+  id: string;
+  type: 'reminder_before' | 'reminder_on_due' | 'reminder_after' | 'notify_responsible' | 'mark_overdue';
+  scheduledFor: string;
+  status: 'pending' | 'executed' | 'failed' | 'cancelled';
+  description: string;
+  channel?: 'whatsapp' | 'email' | 'internal';
+  executedAt?: string;
+  failureReason?: string;
+}
+
+/**
+ * INTERFACE: Evento do Histórico Auditável
+ * Cada ação importante gera um evento registrado
+ * 
+ * Event types:
+ * - WhatsApp específicos: whatsapp_opened, whatsapp_sent_manual, whatsapp_api_sent
+ * - E-mail específicos: email_sent, email_failed
+ * - Gerais: created, edited, sent, resent, viewed, paid, overdue, cancelled, archived, automation_executed, error, payment_method_generated
+ */
+export interface ChargeHistoryEvent {
+  id: string;
+  timestamp: string;
+  type: 'created' | 'edited' | 'sent' | 'resent' | 'viewed' | 'paid' | 'overdue' | 'cancelled' | 'archived' | 'automation_executed' | 'error' | 'payment_method_generated' | 'whatsapp_opened' | 'whatsapp_sent_manual' | 'whatsapp_api_sent' | 'email_sent' | 'email_failed';
+  description: string;
+  performedBy?: string;
+  userType?: 'user' | 'automation' | 'system';
+  changes?: Record<string, { from: any; to: any }>;
+  channel?: 'whatsapp' | 'email' | 'internal';
+  error?: string;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * INTERFACE: Template de Mensagem
+ * Templates predefinidos para envios automáticos
+ */
+export interface ChargeTemplate {
+  id: string;
+  name: string;
+  type: 'initial' | 'reminder_before' | 'reminder_on_due' | 'reminder_overdue' | 'payment_confirmed';
+  channel: 'whatsapp' | 'email' | 'both';
+  subject?: string;
+  content: string;
+  variables: string[];
+  isDefault?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  example?: Record<string, string>;
+}
+
+/**
+ * INTERFACE: Charge (Cobrança)
+ * Representa uma cobrança / fatura no sistema
+ * ENTERPRISE: Tipo, status, automação, histórico completo
+ */
+export interface Charge {
+  id: string;
+  clientId?: string;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  
+  description: string;
+  value: number;
+  dueDate: string;
+  
+  status: 'draft' | 'scheduled' | 'sent' | 'viewed' | 'paid' | 'overdue' | 'cancelled' | 'archived';
+  statusUpdatedAt?: string;
+  
+  // Forma de Pagamento
+  generationMode?: ChargeGenerationMode;
+  paymentMethod?: 'pix' | 'boleto' | 'credit_card' | 'transfer' | 'cash' | 'pending';
+  paymentDetails?: PaymentMethodDetails;
+  
+  // Recorrência
+  recurrence?: 'none' | 'monthly' | 'quarterly' | 'yearly';
+  recurrenceEndDate?: string;
+  parentChargeId?: string;
+  
+  // Canais de Envio
+  sendChannel?: 'whatsapp' | 'email' | 'both';
+  lastSentAt?: string;
+  lastSentChannel?: 'whatsapp' | 'email';
+  viewedAt?: string;
+  paidAt?: string;
+  cancelledAt?: string;
+  archivedAt?: string;
+  
+  // Responsáveis e Notas
+  responsible?: string;
+  observation?: string;
+  internalNotes?: string;
+  tags?: string[];
+  
+  // Origem
+  origin?: 'lead' | 'client' | 'manual' | 'integration';
+  linkedLeadId?: string;
+  
+  // Timestamps
+  createdAt: string;
+  updatedAt?: string;
+  
+  // Automação
+  automationEnabled?: boolean;
+  automationConfig?: ChargeAutomation;
+  scheduledActions?: ScheduledAction[];
+  
+  // Template de mensagem utilizado
+  templateId?: string;
+  lastTemplateUsed?: string;
+  
+  // Histórico Completo
+  history?: ChargeHistoryEvent[];
+  sendHistory?: ChargeSendLog[];
+  
+  // Auditoria
+  archived?: boolean;
+}
+
+export interface ChargeSendLog {
+  id: string;
+  chargeId: string;
+  channel: 'whatsapp' | 'email';
+  sentAt: string;
+  status: 'sent' | 'failed' | 'viewed';
+  recipientPhone?: string;
+  recipientEmail?: string;
+  failureReason?: string;
+  attemptNumber: number;
+}
+
+export interface ChargeAutomation {
+  id: string;
+  chargeId: string;
+  
+  // Master control
+  enabled: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  
+  // Lembretes
+  sendBeforeDueDate: boolean;
+  daysBefore: number;
+  sendOnDueDate: boolean;
+  
+  // Reenvio após atraso
+  sendAfterDueDate: boolean;
+  daysAfter: number;
+  maxResendAttempts?: number;
+  resendAttemptCount?: number;
+  
+  // Notificações internas
+  notifyResponsible: boolean;
+  notifyOnOverdue: boolean;
+  
+  // Configurações
+  preferredChannel: 'whatsapp' | 'email' | 'both';
+  templateId?: string;
+  
+  // Controle
+  autoMarkAsPaid?: boolean;
+  stopOnPayment?: boolean;
+  pauseUntilDate?: string;
+  
+  // Auditoria
+  lastExecutedAt?: string;
+  nextScheduledFor?: string;
+  executionLog?: ScheduledAction[];
+}
+

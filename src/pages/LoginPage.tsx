@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Chrome, Mail, Lock, Loader2, AlertCircle } from "lucide-react";
+import { Mail, Lock, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -47,23 +47,6 @@ export default function LoginPage() {
             setError("Ocorreu um erro inesperado.");
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleGoogleLogin = async () => {
-        try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider: "google",
-                options: {
-                    redirectTo: `${window.location.origin}/`,
-                },
-            });
-
-            if (error) {
-                toast.error("Erro ao entrar com Google: " + error.message);
-            }
-        } catch (err) {
-            toast.error("Ocorreu um erro inesperado.");
         }
     };
 
@@ -141,24 +124,7 @@ export default function LoginPage() {
                         </Button>
                     </form>
 
-                    <div className="relative py-2">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-border" />
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-card px-2 text-muted-foreground">Ou continue com</span>
-                        </div>
-                    </div>
-
-                    <Button
-                        variant="outline"
-                        className="w-full gap-2 border-border/50 hover:bg-secondary transition-colors"
-                        onClick={handleGoogleLogin}
-                        disabled={loading}
-                    >
-                        <Chrome className="h-4 w-4" />
-                        Entrar com Google
-                    </Button>
+                    {/* Espaço reservado removido para botão Google */}
                 </CardContent>
                 <CardFooter className="flex flex-wrap items-center justify-center gap-1 text-sm text-muted-foreground">
                     Ainda não tem uma conta?

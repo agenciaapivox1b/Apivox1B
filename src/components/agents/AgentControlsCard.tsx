@@ -64,41 +64,28 @@ export function AgentControlsCard({ bot, onToggle, onClickConfig, onUpdateWebhoo
                 <CardContent className="space-y-6 pt-4">
                     {/* CONTROLES */}
                     <div>
-                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Controles</h4>
-                        <div className="flex items-center justify-between bg-muted/30 p-4 rounded-lg border border-border">
-                            <div>
-                                <p className="font-medium text-sm text-foreground">Status do Agente</p>
-                                <div className="flex items-center mt-1 gap-2">
-                                    <div className={`h-2.5 w-2.5 rounded-full ${isCurrentlyActive ? 'bg-brand-green' : 'bg-destructive'}`} />
-                                    <span className="text-xs text-muted-foreground font-medium">
-                                        {isCurrentlyActive ? 'Ativo' : 'Pausado'}
-                                    </span>
+                        <div className="flex items-center justify-between bg-secondary/50 p-4 rounded-xl border border-border/50">
+                            <div className="flex items-center gap-3">
+                                <div className={`h-3 w-3 rounded-full ${isCurrentlyActive ? 'bg-brand-green-secondary animate-pulse' : 'bg-muted'}`} />
+                                <div>
+                                    <p className="font-semibold text-sm text-foreground">
+                                        {isCurrentlyActive ? 'Agente Ativo' : 'Agente Pausado'}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {isCurrentlyActive ? 'Respondendo clientes' : 'Desativado temporariamente'}
+                                    </p>
                                 </div>
                             </div>
                             <Switch
                                 checked={isCurrentlyActive}
                                 onCheckedChange={() => setConfirmToggleOpen(true)}
-                                className="scale-125 origin-right"
+                                className="data-[state=checked]:bg-brand-green-secondary"
                             />
                         </div>
                     </div>
 
-                    {/* WEBHOOK URL */}
-                    <div>
-                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Webhook URL</h4>
-                        <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-muted/50 border border-border rounded-md px-3 py-2 text-sm text-muted-foreground truncate" title={(bot as Bot & { webhook_url?: string }).webhook_url || ''}>
-                                {(bot as Bot & { webhook_url?: string }).webhook_url ? (
-                                    <span className="text-foreground">{(bot as Bot & { webhook_url?: string }).webhook_url}</span>
-                                ) : (
-                                    <span>Cole aqui a URL do webhook</span>
-                                )}
-                            </div>
-                            <Button variant="outline" size="icon" onClick={() => setWebhookModalOpen(true)}>
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
+                    {/* WEBHOOK URL - HIDDEN BY DEFAULT, ACCESSIBLE VIA EDIT IF NEEDED (BUT USER ASKED TO HIDE) */}
+                    {/* We keep the logic but remove it from the main UI to reduce cognitive load */}
                 </CardContent>
 
                 <CardFooter className="pt-2 pb-5 gap-3 border-t border-border mt-4">
