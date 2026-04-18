@@ -4,11 +4,11 @@ import { Plus } from 'lucide-react';
 import LeadCard from './LeadCard';
 
 interface Lead {
-  id: number | string;
+  id: string;
   name: string;
   phone: string;
   observation?: string;
-  priority?: 'baixa' | 'média' | 'alta';
+  priority?: 'baixa' | 'media' | 'alta';
   stage: string;
 }
 
@@ -18,6 +18,7 @@ interface FunnelColumnProps {
   leads: Lead[];
   onLeadClick: (lead: Lead) => void;
   onAddLead: () => void;
+  onFollowUpChange?: () => void;
 }
 
 export default function FunnelColumn({
@@ -26,6 +27,7 @@ export default function FunnelColumn({
   leads,
   onLeadClick,
   onAddLead,
+  onFollowUpChange,
 }: FunnelColumnProps) {
   return (
     <div className="flex flex-col h-full min-w-[340px] space-y-3">
@@ -59,6 +61,7 @@ export default function FunnelColumn({
                 key={lead.id}
                 lead={lead}
                 onClick={() => onLeadClick(lead)}
+                onFollowUpChange={onFollowUpChange}
               />
             ))
           )}

@@ -88,6 +88,120 @@ class ChargeService {
     return newCharge;
   }
 
+  /**
+   * Cria cobrança com integração ao gateway de pagamento
+   * Fluxo: preencher dados -> gerar no gateway -> receber link/código -> salvar no banco
+   */
+  async createChargeWithGateway(
+    payload: {
+      clientName: string;
+      clientEmail: string;
+      clientPhone: string;
+      clientCpf: string;
+      description: string;
+      value: number;
+      dueDate: string;
+      paymentMethod: 'pix' | 'boleto' | 'credit_card';
+    },
+    userId?: string
+  ): Promise<Charge> {
+    // Step 1: Generate charge in gateway (simulated - replace with real API call)
+    const gatewayResponse = await this.simulateGatewayGeneration(payload);
+
+    if (!gatewayResponse.success) {
+      throw new Error('Falha ao gerar cobrança no gateway');
+    }
+
+    // Step 2: Create charge with gateway data
+    const newCharge: Charge = {
+      id: `charge-${Date.now()}`,
+      clientName: payload.clientName,
+      clientEmail: payload.clientEmail,
+      clientPhone: payload.clientPhone,
+      clientCpf: payload.clientCpf,
+      description: payload.description,
+      value: payload.value,
+      dueDate: payload.dueDate,
+      paymentMethod: payload.paymentMethod,
+      status: 'draft', // Now ready to be sent (generated in gateway)
+      origin: 'integration',
+      createdAt: new Date().toISOString(),
+      sendHistory: [],
+      history: [],
+      // Gateway data
+      gatewayChargeId: gatewayResponse.gatewayChargeId,
+      paymentLink: gatewayResponse.paymentLink,
+      pixCode: gatewayResponse.pixCode,
+      barcode: gatewayResponse.barcode,
+      qrCode: gatewayResponse.qrCode,
+      paymentDetails: {
+        method: payload.paymentMethod,
+        pixCode: gatewayResponse.pixCode,
+        pixQrCode: gatewayResponse.qrCode,
+        boletoLine: gatewayResponse.barcode,
+        boletoBarcode: gatewayResponse.barcode,
+        paymentLink: gatewayResponse.paymentLink,
+        externalId: gatewayResponse.gatewayChargeId,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    // Step 3: Save to database
+    const charges = this.getCharges();
+    charges.push(newCharge);
+    this.saveCharges(charges);
+
+    // Step 4: Add history event
+    this.addHistoryEvent(newCharge.id, {
+      type: 'created',
+      description: `Cobrança gerada no gateway - Valor: R$ ${payload.value.toFixed(2)}`,
+      performedBy: userId,
+      userType: 'user',
+      metadata: {
+        gatewayChargeId: gatewayResponse.gatewayChargeId,
+        paymentMethod: payload.paymentMethod,
+      },
+    });
+
+    return newCharge;
+  }
+
+  /**
+   * Simula a geração de cobrança no gateway
+   * TODO: Replace with actual gateway API integration
+   */
+  private async simulateGatewayGeneration(payload: {
+    clientName: string;
+    clientCpf: string;
+    description: string;
+    value: number;
+    dueDate: string;
+    paymentMethod: string;
+  }): Promise<{
+    success: boolean;
+    gatewayChargeId?: string;
+    paymentLink?: string;
+    pixCode?: string;
+    barcode?: string;
+    qrCode?: string;
+  }> {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Generate mock gateway data
+    const gatewayChargeId = `GW-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const baseLink = `https://pagamento.apivox.com/p/${gatewayChargeId}`;
+
+    return {
+      success: true,
+      gatewayChargeId,
+      paymentLink: baseLink,
+      pixCode: payload.paymentMethod === 'pix' ? `00020126580014BR.GOV.BCB.PIX0136${gatewayChargeId}520400005303986540${payload.value.toFixed(2)}5802BR5909${payload.clientName}6009Sao Paulo62070503***6304` : undefined,
+      barcode: payload.paymentMethod === 'boleto' ? `23793.81802 ${Math.random().toString().substr(2, 11)} ${Math.random().toString().substr(2, 11)} ${Math.random().toString().substr(2, 11)}` : undefined,
+      qrCode: payload.paymentMethod === 'pix' ? `data:image/png;base64,MOCKQRCODE${gatewayChargeId}` : undefined,
+    };
+  }
+
   updateCharge(id: string, updates: Partial<Charge>, userId?: string, silent: boolean = false): Charge | null {
     const charges = this.getCharges();
     const index = charges.findIndex(c => c.id === id);
@@ -660,6 +774,50 @@ class ChargeService {
       sentCount,
       draftCount,
       paymentRate: totalValue > 0 ? (totalPaid / totalValue) * 100 : 0,
+    };
+  }
+
+  // ===== MÉTRICAS OPERACIONAIS SIMPLIFICADAS =====
+
+  getOperationalMetrics(): {
+    totalReceivable: number;      // Total a receber (pendente + vencido)
+    dueToday: number;             // Valor vencendo hoje
+    overdue: number;              // Valor vencido
+    paidThisMonth: number;        // Valor pago no mês atual
+    countDueToday: number;         // Quantidade vencendo hoje
+    countOverdue: number;          // Quantidade vencida
+    countPaidThisMonth: number;    // Quantidade paga no mês
+  } {
+    const charges = this.getCharges().filter(c => !c.archived && c.status !== 'cancelled');
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    const pendingCharges = charges.filter(c => 
+      ['draft', 'scheduled', 'sent', 'viewed', 'overdue'].includes(c.status)
+    );
+
+    const totalReceivable = pendingCharges.reduce((sum, c) => sum + c.value, 0);
+
+    const dueTodayCharges = pendingCharges.filter(c => c.dueDate.split('T')[0] === today);
+    const dueToday = dueTodayCharges.reduce((sum, c) => sum + c.value, 0);
+
+    const overdueCharges = pendingCharges.filter(c => c.dueDate.split('T')[0] < today);
+    const overdue = overdueCharges.reduce((sum, c) => sum + c.value, 0);
+
+    const paidThisMonthCharges = charges.filter(
+      c => c.status === 'paid' && (c.paidAt || c.updatedAt) >= monthStart
+    );
+    const paidThisMonth = paidThisMonthCharges.reduce((sum, c) => sum + c.value, 0);
+
+    return {
+      totalReceivable,
+      dueToday,
+      overdue,
+      paidThisMonth,
+      countDueToday: dueTodayCharges.length,
+      countOverdue: overdueCharges.length,
+      countPaidThisMonth: paidThisMonthCharges.length,
     };
   }
 

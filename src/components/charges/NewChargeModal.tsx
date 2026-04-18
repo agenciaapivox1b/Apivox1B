@@ -176,8 +176,11 @@ export default function NewChargeModal({
     if (!validateForm()) return;
 
     setLoading(true);
+    console.log('[NewChargeModal] Iniciando criação e envio de cobrança...');
+    
     try {
       // 1. Obter o tenant_id do cliente logado
+      console.log('[NewChargeModal] Buscando tenant_id...');
       const { data: clientData, error: clientErr } = await supabase
         .from('clients')
         .select('id')
@@ -185,14 +188,16 @@ export default function NewChargeModal({
         .single();
       
       if (clientErr || !clientData) {
+        console.error('[NewChargeModal] Erro ao buscar tenant:', clientErr);
         throw new Error('Não foi possível localizar o seu identificador de cliente (tenant).');
       }
 
       const tenant_id = clientData.id;
+      console.log('[NewChargeModal] Tenant ID:', tenant_id);
 
-      // 2. Chamada REAL para o Backend (Edge Function ou Novo Fluxo)
-      // Sistema decide automaticamente qual usar baseado na config do tenant
-      const response = await chargeCreationService.createChargeWithFlexibleFlow({
+      // 2. Chamada REAL para o Backend
+      console.log('[NewChargeModal] Chamando chargeCreationService.createChargeWithFlexibleFlow com shouldSendEmail=true...');
+      const requestPayload = {
         tenantId: tenant_id,
         customerName: formData.clientName,
         customerEmail: formData.clientEmail,
@@ -204,10 +209,21 @@ export default function NewChargeModal({
         cpfCnpj: formData.clientCpfCnpj,
         shouldSendEmail: true,
         createdBy: user?.email || 'user'
-      });
+      };
+      console.log('[NewChargeModal] Request payload:', JSON.stringify(requestPayload, null, 2));
+
+      const response = await chargeCreationService.createChargeWithFlexibleFlow(requestPayload);
+      console.log('[NewChargeModal] Response from backend:', JSON.stringify(response, null, 2));
 
       if (!response.success || !response.charge) {
+        console.error('[NewChargeModal] Backend returned error:', response.error);
         throw new Error(response.error || 'Falha ao processar operação no servidor');
+      }
+
+      // Log email status
+      console.log('[NewChargeModal] Email status:', response.emailStatus);
+      if (response.emailError) {
+        console.error('[NewChargeModal] Email error:', response.emailError);
       }
 
       // 3. Exibir resultado consolidado do Backend

@@ -1,27 +1,30 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Phone, MessageSquare } from 'lucide-react';
+import { Phone } from 'lucide-react';
+import FollowUpSummary from './FollowUpSummary';
+import FollowUpBadge from './FollowUpBadge';
 
 interface Lead {
-  id: number | string;
+  id: string;
   name: string;
   phone: string;
   observation?: string;
-  priority?: 'baixa' | 'média' | 'alta';
+  priority?: 'baixa' | 'media' | 'alta';
   stage?: string;
+  contact_id: string;
 }
 
 interface LeadCardProps {
   lead: Lead;
   onClick: () => void;
+  onFollowUpChange?: () => void;
 }
 
-export default function LeadCard({ lead, onClick }: LeadCardProps) {
+export default function LeadCard({ lead, onClick, onFollowUpChange }: LeadCardProps) {
   const getPriorityColor = (priority?: string) => {
     switch (priority) {
       case 'alta':
         return 'bg-red-500/20 border-red-500/30';
-      case 'média':
+      case 'media':
         return 'bg-amber-500/20 border-amber-500/30';
       case 'baixa':
         return 'bg-blue-500/20 border-blue-500/30';
@@ -48,12 +51,29 @@ export default function LeadCard({ lead, onClick }: LeadCardProps) {
           </p>
         )}
 
-        {/* Telefone */}
-        <div className="flex items-center justify-between pt-2 border-t border-border/30">
+        {/* Footer: Telefone + Follow-up Summary */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <h3 className="font-medium text-slate-900 text-sm truncate">
+              {lead.name}
+            </h3>
+            <FollowUpBadge contactId={lead.contact_id} className="shrink-0 ml-1" />
+          </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Phone className="h-3 w-3" />
             <span className="truncate">{lead.phone}</span>
           </div>
+        </div>
+
+        {/* Follow-up Summary with actions */}
+        <div 
+          className="flex items-center justify-between pt-1"
+          onClick={(e) => e.stopPropagation()} // Prevent card click when clicking follow-up actions
+        >
+          <FollowUpSummary 
+            opportunityId={lead.id} 
+            onFollowUpChange={onFollowUpChange}
+          />
         </div>
       </CardContent>
     </Card>

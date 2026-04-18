@@ -30,7 +30,7 @@ export default function NewLeadModal({ open, onOpenChange, onSubmit }: NewLeadMo
     name: '',
     phone: '',
     stage: 'atendendo',
-    priority: 'média',
+    priority: 'media',
     observation: '',
   });
 
@@ -41,7 +41,7 @@ export default function NewLeadModal({ open, onOpenChange, onSubmit }: NewLeadMo
       name: '',
       phone: '',
       stage: 'atendendo',
-      priority: 'média',
+      priority: 'media',
       observation: '',
     });
   };
@@ -103,7 +103,7 @@ export default function NewLeadModal({ open, onOpenChange, onSubmit }: NewLeadMo
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="baixa">Baixa</SelectItem>
-                  <SelectItem value="média">Média</SelectItem>
+                  <SelectItem value="media">Média</SelectItem>
                   <SelectItem value="alta">Alta</SelectItem>
                 </SelectContent>
               </Select>

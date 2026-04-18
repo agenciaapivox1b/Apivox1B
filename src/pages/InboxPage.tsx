@@ -3,19 +3,41 @@ import { useInbox } from '@/hooks/useInbox';
 import type { Conversation, Message } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { UserCheck, CheckCircle, Tag, Download, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
+import { UserCheck, CheckCircle, Tag, Download, Loader2, AlertCircle, MessageSquare, Plus, Briefcase } from 'lucide-react';
+import MessageInput from '@/components/conversations/MessageInput';
+import { opportunityService } from '@/services/crmService';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function InboxPage() {
+  const navigate = useNavigate();
   const {
     conversations,
     messages,
     selectedId,
     setSelectedId,
     loading,
-    messagesLoading
+    messagesLoading,
+    refreshConversations,
+    tenantId
   } = useInbox();
 
   const [filter, setFilter] = useState<string>('all');
+  
+  // Estado para modal de criar oportunidade
+  const [showCreateOpportunityModal, setShowCreateOpportunityModal] = useState(false);
+  const [opportunityName, setOpportunityName] = useState('');
+  const [opportunityAmount, setOpportunityAmount] = useState('');
+  const [opportunityDescription, setOpportunityDescription] = useState('');
+  const [creatingOpportunity, setCreatingOpportunity] = useState(false);
 
   const filteredConversations = conversations.filter(c => {
     if (filter === 'all') return true;
@@ -23,6 +45,35 @@ export default function InboxPage() {
   });
 
   const selectedConv = conversations.find(c => c.id === selectedId);
+
+  // Handler para criar oportunidade a partir da conversa
+  const handleCreateOpportunity = async () => {
+    if (!selectedId) return;
+    
+    try {
+      setCreatingOpportunity(true);
+      const opportunity = await opportunityService.createFromConversation(selectedId, {
+        name: opportunityName || `Oportunidade - ${selectedConv?.contact_name}`,
+        amount: parseFloat(opportunityAmount) || 0,
+        description: opportunityDescription,
+      });
+      
+      toast.success('Oportunidade criada com sucesso!');
+      setShowCreateOpportunityModal(false);
+      
+      // Reset form
+      setOpportunityName('');
+      setOpportunityAmount('');
+      setOpportunityDescription('');
+      
+      // Navegar para a oportunidade criada
+      navigate(`/opportunities/${opportunity.id}`);
+    } catch (error: any) {
+      toast.error('Erro ao criar oportunidade: ' + error.message);
+    } finally {
+      setCreatingOpportunity(false);
+    }
+  };
 
   if (loading && conversations.length === 0) {
     return (
@@ -128,9 +179,20 @@ export default function InboxPage() {
                   </p>
                 </div>
               </div>
-              <Button size="sm" className="h-8 rounded-full text-xs font-bold">
-                Assumir Atendimento
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="h-8 rounded-full text-xs font-bold"
+                  onClick={() => setShowCreateOpportunityModal(true)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Criar Oportunidade
+                </Button>
+                <Button size="sm" className="h-8 rounded-full text-xs font-bold">
+                  Assumir Atendimento
+                </Button>
+              </div>
             </div>
 
             {/* Messages body */}
@@ -153,7 +215,7 @@ export default function InboxPage() {
                       >
                         {m.content}
                         <div className={`text-[10px] mt-1 opacity-50 ${m.sender === 'user' ? 'text-muted-foreground' : 'text-primary-foreground'}`}>
-                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
                     </div>
@@ -162,16 +224,91 @@ export default function InboxPage() {
               )}
             </div>
 
-            {/* Input area - Disabled for simple viewing */}
-            <div className="p-4 border-t border-border bg-card">
-              <div className="max-w-4xl mx-auto p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl text-center">
-                <p className="text-sm text-amber-900 font-medium">Responda diretamente no WhatsApp</p>
-                <p className="text-xs text-amber-800/70 mt-1">As respostas são enviadas automaticamente pelo seu bot</p>
-              </div>
-            </div>
+            {/* Input area - WhatsApp real */}
+            <MessageInput
+              tenantId={tenantId}
+              conversationId={selectedId}
+              contactPhone={selectedConv.contact_phone}
+              onMessageSent={() => {
+                // Recarregar mensagens após envio
+                setSelectedId(selectedId);
+              }}
+            />
           </>
         )}
       </div>
+      
+      {/* Modal Criar Oportunidade */}
+      <Dialog open={showCreateOpportunityModal} onOpenChange={setShowCreateOpportunityModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Criar Oportunidade
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="text-sm text-muted-foreground">
+              Criar oportunidade para: <strong>{selectedConv?.contact_name}</strong>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="opp-name">Nome da Oportunidade *</Label>
+              <Input
+                id="opp-name"
+                placeholder="Ex: Projeto de Automação"
+                value={opportunityName}
+                onChange={(e) => setOpportunityName(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="opp-amount">Valor Estimado (R$) *</Label>
+              <Input
+                id="opp-amount"
+                type="number"
+                placeholder="5000"
+                value={opportunityAmount}
+                onChange={(e) => setOpportunityAmount(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="opp-desc">Descrição</Label>
+              <Input
+                id="opp-desc"
+                placeholder="Detalhes da oportunidade..."
+                value={opportunityDescription}
+                onChange={(e) => setOpportunityDescription(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex justify-end gap-3 pt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowCreateOpportunityModal(false)}
+                disabled={creatingOpportunity}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleCreateOpportunity}
+                disabled={!opportunityName || creatingOpportunity}
+              >
+                {creatingOpportunity ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  'Criar Oportunidade'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

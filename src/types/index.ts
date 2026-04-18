@@ -88,16 +88,23 @@ export type ChargeGenerationMode = 'predefined' | 'client_choice';
  * Dados reais da cobrança gerada (boleto, PIX, link, etc)
  */
 export interface PaymentMethodDetails {
-  method: 'pix' | 'boleto' | 'credit_card' | 'transfer' | 'cash' | 'pending';
-  provider?: 'asaas' | 'mercadopago' | 'stripe' | 'manual' | 'other';
+  method: 'pix' | 'boleto' | 'credit_card' | 'transfer' | 'cash' | 'external' | 'manual' | 'pending';
+  provider?: 'asaas' | 'mercadopago' | 'stripe' | 'manual' | 'external' | 'other';
   externalId?: string;
   reference?: string;
+  // PIX
   pixCode?: string;
   pixQrCode?: string;
+  // Boleto
   boletoLine?: string;
   boletoBarcode?: string;
+  // Links e códigos externos (ERP, banco, etc)
   paymentLink?: string;
+  externalLink?: string;
+  externalCode?: string;
+  // Cartão
   cardLastFour?: string;
+  // Transferência
   bankAccountNumber?: string;
   bankRoutingNumber?: string;
   generatedAt?: string;
@@ -170,6 +177,7 @@ export interface Charge {
   clientName: string;
   clientEmail: string;
   clientPhone: string;
+  clientCpf?: string; // CPF do cliente para gateway
   
   description: string;
   value: number;
@@ -180,7 +188,7 @@ export interface Charge {
   
   // Forma de Pagamento
   generationMode?: ChargeGenerationMode;
-  paymentMethod?: 'pix' | 'boleto' | 'credit_card' | 'transfer' | 'cash' | 'pending';
+  paymentMethod?: 'pix' | 'boleto' | 'credit_card' | 'transfer' | 'cash' | 'external' | 'manual' | 'pending';
   paymentDetails?: PaymentMethodDetails;
   
   // Recorrência
@@ -204,7 +212,7 @@ export interface Charge {
   tags?: string[];
   
   // Origem
-  origin?: 'lead' | 'client' | 'manual' | 'integration';
+  origin?: 'lead' | 'client' | 'manual' | 'integration' | 'external';
   linkedLeadId?: string;
   
   // Timestamps
@@ -223,6 +231,13 @@ export interface Charge {
   // Histórico Completo
   history?: ChargeHistoryEvent[];
   sendHistory?: ChargeSendLog[];
+  
+  // Gateway Integration
+  gatewayChargeId?: string;
+  paymentLink?: string;
+  pixCode?: string;
+  barcode?: string;
+  qrCode?: string;
   
   // Auditoria
   archived?: boolean;

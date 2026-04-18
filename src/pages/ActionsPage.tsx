@@ -8,21 +8,21 @@ export default function ActionsPage() {
       title: 'Pedir alteração no bot',
       description: 'Solicite ajustes nas respostas ou no fluxo do seu atendimento',
       icon: Zap,
-      action: () => window.open('https://wa.me/5511988880001', '_blank'),
+      action: () => window.open('https://wa.me/5545991585863?text=Quero+ajustar+meu+bot+porque+acho+que+ele+nao+esta+respondendo+como+deveria+pode+me+ajudar', '_blank'),
       buttonText: 'Solicitar alteração',
     },
     {
       title: 'Falar com suporte',
       description: 'Entre em contato com nossa equipe para tirar dúvidas',
       icon: Headphones,
-      action: () => window.open('https://wa.me/5511988880001', '_blank'),
+      action: () => window.open('https://wa.me/5545991585863?text=Preciso+de+ajuda+com+a+plataforma+da+APIVOX+pode+me+atender+o+mais+rapido+possivel', '_blank'),
       buttonText: 'Falar com suporte',
     },
     {
       title: 'Criar nova automação',
       description: 'Solicite a criação de novos fluxos ou melhorias',
       icon: Lightbulb,
-      action: () => window.open('https://wa.me/5511988880001', '_blank'),
+      action: () => window.open('https://wa.me/5545991585863?text=Quero+criar+uma+nova+automacao+para+meu+negocio+e+entender+como+posso+melhorar+meus+resultados', '_blank'),
       buttonText: 'Criar automação',
     },
   ];
@@ -65,12 +65,16 @@ export default function ActionsPage() {
       </div>
 
       <div className="bg-emerald-500/5 rounded-3xl p-10 text-center space-y-4 border border-emerald-500/10">
-        <h2 className="text-2xl font-bold text-foreground">Precisa de ajuda?</h2>
+        <h2 className="text-2xl font-bold text-foreground">Recupere leads automaticamente</h2>
         <p className="text-muted-foreground max-w-lg mx-auto">
-          Acesse nossa documentação e tutoriais para aproveitar ao máximo seu atendimento automático.
+          Ative o follow-up inteligente e aumente suas chances de fechar clientes sem esforço.
         </p>
-        <Button variant="outline" className="rounded-full px-8 h-12 font-bold text-lg border-emerald-500/20 hover:bg-emerald-500/5">
-          Acessar Documentação
+        <Button
+          onClick={() => window.open('https://wa.me/5545991585863?text=Quero+ativar+o+follow+up+automatico+para+recuperar+leads+e+aumentar+meus+fechamentos', '_blank')}
+          variant="outline"
+          className="rounded-full px-8 h-12 font-bold text-lg border-emerald-500/20 hover:bg-emerald-500/5"
+        >
+          Quero recuperar leads
         </Button>
       </div>
     </div>

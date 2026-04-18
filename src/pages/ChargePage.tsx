@@ -1,205 +1,106 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  Search, Plus, Download, Filter, Eye, Send, Copy, Trash2,
-  DollarSign, AlertCircle, CheckCircle2, Clock, Archive, Mail, MessageCircle
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Search, Plus, Eye, MoreHorizontal, CheckCircle2, AlertCircle, 
+  Clock, DollarSign, Calendar, Link as LinkIcon, FileText, RefreshCw,
+  Trash2, Archive, ExternalLink, MessageCircle
 } from 'lucide-react';
 import type { Charge } from '@/types';
 import { chargeService } from '@/services/chargeService';
-import { emailService } from '@/services/emailService';
-import NewChargeModal from '@/components/charges/NewChargeModal';
-import ChargeAutomationModal from '@/components/charges/ChargeAutomationModal';
-import ChargeGenerationModal from '@/components/charges/ChargeGenerationModal';
-import ChargeActionsMenu from '@/components/charges/ChargeActionsMenu';
-import ChargeDetailPanel from '@/components/charges/ChargeDetailPanel';
-import PaymentLinksDrawer from '@/components/charges/PaymentLinksDrawer';
-import { QuickFilters } from '@/components/charges/QuickFilters';
-import ChargeFollowUpTab from '@/components/charges/ChargeFollowUpTab';
+import SimpleChargeDetailPanel from '@/components/charges/SimpleChargeDetailPanel';
+import { ChargeFlowSelector } from '@/components/charges/ChargeFlowSelector';
+import { InternalChargeModal } from '@/components/charges/InternalChargeModal';
+import { ExternalChargeModal } from '@/components/charges/ExternalChargeModal';
+import { SendChargeModal } from '@/components/charges/SendChargeModal';
 import { toast } from 'sonner';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Settings as SettingsIcon, History } from 'lucide-react';
+
+// ==================== COMPONENTE PRINCIPAL ====================
 
 export default function ChargePage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const activeTab = searchParams.get('tab') || 'list';
-
-  const [charges, setCharges] = useState<Charge[]>(chargeService.getCharges());
+  // Estados principais
+  const [charges, setCharges] = useState<Charge[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
-  const [quickFilters, setQuickFilters] = useState<string[]>([]);
-  const [showArchived, setShowArchived] = useState(false);
-  const [showNewChargeModal, setShowNewChargeModal] = useState(false);
-  const [showAutomationModal, setShowAutomationModal] = useState(false);
-  const [showGenerationModal, setShowGenerationModal] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
+  
+  // Estados dos modais de fluxo de cobrança
+  const [showFlowSelector, setShowFlowSelector] = useState(false);
+  const [showInternalModal, setShowInternalModal] = useState(false);
+  const [showExternalModal, setShowExternalModal] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  
   const [showDetailPanel, setShowDetailPanel] = useState(false);
-  const [showPaymentLinksDrawer, setShowPaymentLinksDrawer] = useState(false);
-  const [selectedChargeForDetail, setSelectedChargeForDetail] = useState<Charge | null>(null);
-  const [selectedChargeForAutomation, setSelectedChargeForAutomation] = useState<{ id: string; name: string } | null>(null);
-  const [selectedChargeForGeneration, setSelectedChargeForGeneration] = useState<Charge | null>(null);
-  const [selectedChargeForPaymentLinks, setSelectedChargeForPaymentLinks] = useState<Charge | null>(null);
+  const [selectedCharge, setSelectedCharge] = useState<Charge | null>(null);
+  const [metrics, setMetrics] = useState({
+    totalReceivable: 0,
+    dueToday: 0,
+    overdue: 0,
+    paidThisMonth: 0,
+    countDueToday: 0,
+    countOverdue: 0,
+    countPaidThisMonth: 0,
+  });
 
-  const handleTabChange = (value: string) => {
-    if (value === 'settings') {
-      navigate('/configuracoes?tab=gateway');
-      return;
-    }
-    setSearchParams({ tab: value });
+  // Carregar dados iniciais
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = () => {
+    const data = chargeService.getCharges();
+    setCharges(data);
+    setMetrics(chargeService.getOperationalMetrics());
   };
 
-  const metrics = useMemo(() => chargeService.getMetrics(), [charges]);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const sevenDaysFromNow = new Date(today);
-  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-
+  // Filtros
   const filteredCharges = useMemo(() => {
     return charges.filter(charge => {
-      // Filtro de arquivo
-      if (!showArchived && charge.archived) return false;
+      // Ignorar arquivadas e canceladas na listagem principal
+      if (charge.archived || charge.status === 'cancelled') return false;
 
-      // Filtro de busca
-      const matchesSearch = charge.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        charge.description.toLowerCase().includes(searchQuery.toLowerCase());
+      // Busca
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        charge.clientName.toLowerCase().includes(query) ||
+        charge.description.toLowerCase().includes(query) ||
+        (charge.clientEmail && charge.clientEmail.toLowerCase().includes(query));
 
       // Filtro de status
-      const matchesStatus = selectedStatus.length === 0 || selectedStatus.includes(charge.status);
+      const matchesStatus = statusFilter === 'all' || charge.status === statusFilter;
 
-      // Filtros rápidos
-      if (quickFilters.length > 0) {
-        const matchesQuickFilter = quickFilters.some(filter => {
-          const dueDate = new Date(charge.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
+      // Filtro de forma de pagamento
+      const matchesPayment = paymentMethodFilter === 'all' || charge.paymentMethod === paymentMethodFilter;
 
-          switch (filter) {
-            case 'due_today':
-              return dueDate.getTime() === today.getTime() && charge.status !== 'paid';
-            case 'due_soon':
-              return dueDate > today && dueDate <= sevenDaysFromNow && charge.status !== 'paid';
-            case 'overdue':
-              return dueDate < today && charge.status !== 'paid';
-            case 'paid':
-              return charge.status === 'paid';
-            case 'with_automation':
-              return charge.automationEnabled;
-            case 'not_sent':
-              return charge.status === 'draft';
-            case 'no_payment_method':
-              return !charge.paymentDetails || charge.paymentDetails.method === 'pending';
-            case 'no_automation':
-              return !charge.automationEnabled && !charge.archived;
-            default:
-              return false;
-          }
-        });
-        if (!matchesQuickFilter) return false;
-      }
-
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && matchesPayment;
     });
-  }, [charges, searchQuery, selectedStatus, showArchived, quickFilters]);
+  }, [charges, searchQuery, statusFilter, paymentMethodFilter]);
 
-  const handleSendCharge = async (id: string, channel: 'whatsapp' | 'email') => {
-    if (channel === 'email') {
-      const result = await emailService.sendBillingEmail(id);
-      if (result.success) {
-        toast.success('E-mail enviado com sucesso via Resend');
-        // Opcional: Recarregar cargas para atualizar status/lastSent
-        setCharges(chargeService.getCharges()); // localStorage
-      } else {
-        toast.error(`Falha ao enviar e-mail: ${result.error}`);
-      }
-      return;
-    }
-
-    // WhatsApp ainda usa o mock por enquanto ou lógica anterior
-    const updated = chargeService.sendCharge(id, channel);
-    if (updated) {
-      setCharges(chargeService.getCharges());
-      toast.success(`Mensagem enviada via WhatsApp`);
-    }
-  };
-
-  const handleMarkAsPaid = (id: string) => {
-    const updated = chargeService.markAsPaid(id);
-    if (updated) {
-      setCharges(chargeService.getCharges());
-      toast.success('Cobrança marcada como paga');
-    }
-  };
-
-  const handleArchive = (id: string) => {
-    const updated = chargeService.toggleArchive(id);
-    if (updated) {
-      setCharges(chargeService.getCharges());
-      toast.success(updated.archived ? 'Cobrança arquivada' : 'Cobrança restaurada');
-    }
-  };
-
-  const handleDuplicate = (id: string) => {
-    const duplicated = chargeService.duplicateCharge(id);
-    if (duplicated) {
-      setCharges(chargeService.getCharges());
-      toast.success('Cobrança duplicada');
-    }
-  };
-
-  const handleDelete = (id: string) => {
-    chargeService.deleteCharge(id);
-    setCharges(chargeService.getCharges());
-    toast.success('Cobrança deletada');
-  };
-
-  const handleChargeCreated = (newCharge: Charge) => {
-    setCharges(prev => [newCharge, ...prev]);
-  };
-
-  const handleOpenAutomation = (chargeId: string, chargeName: string) => {
-    setSelectedChargeForAutomation({ id: chargeId, name: chargeName });
-    setShowAutomationModal(true);
-  };
-
-  const handleOpenGeneration = (charge: Charge) => {
-    setSelectedChargeForGeneration(charge);
-    setShowGenerationModal(true);
-  };
-
-  const handleChargeGenerated = (updatedCharge: Charge) => {
-    setCharges(chargeService.getCharges());
-    setShowGenerationModal(false);
-    setSelectedChargeForGeneration(null);
-    // Atualizar também o painel de detalhes se estiver aberto
-    if (selectedChargeForDetail?.id === updatedCharge.id) {
-      setSelectedChargeForDetail(updatedCharge);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any; label: string; icon: any }> = {
-      draft: { variant: 'secondary', label: 'Rascunho', icon: null },
-      scheduled: { variant: 'outline', label: 'Agendada', icon: Clock },
-      sent: { variant: 'default', label: 'Enviada', icon: Send },
-      viewed: { variant: 'default', label: 'Visualizada', icon: Eye },
-      paid: { variant: 'default', label: 'Paga', icon: CheckCircle2 },
-      overdue: { variant: 'destructive', label: 'Vencida', icon: AlertCircle },
-      cancelled: { variant: 'outline', label: 'Cancelada', icon: null },
-    };
-
-    const config = variants[status] || variants.draft;
-    return (
-      <Badge variant={config.variant as any} className="gap-1">
-        {config.icon && <config.icon className="h-3 w-3" />}
-        {config.label}
-      </Badge>
-    );
-  };
-
+  // Formatação
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -211,304 +112,400 @@ export default function ChargePage() {
     return new Date(date).toLocaleDateString('pt-BR');
   };
 
+  // Configurações de status
+  const getStatusConfig = (status: string) => {
+    const configs: Record<string, { label: string; color: string; icon: any }> = {
+      draft: { label: 'Criada', color: 'bg-slate-100 text-slate-700 border-slate-200', icon: FileText },
+      scheduled: { label: 'Gerada', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Clock },
+      sent: { label: 'Enviada', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: AlertCircle },
+      viewed: { label: 'Visualizada', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: Eye },
+      paid: { label: 'Paga', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
+      overdue: { label: 'Vencida', color: 'bg-red-100 text-red-700 border-red-200', icon: AlertCircle },
+    };
+    return configs[status] || configs.draft;
+  };
+
+  // Configurações de forma de pagamento
+  const getPaymentMethodConfig = (method?: string) => {
+    const configs: Record<string, { label: string; icon: any; color: string }> = {
+      pix: { label: 'PIX', icon: DollarSign, color: 'text-green-600' },
+      boleto: { label: 'Boleto', icon: FileText, color: 'text-blue-600' },
+      credit_card: { label: 'Cartão', icon: DollarSign, color: 'text-purple-600' },
+      external: { label: 'Externa', icon: ExternalLink, color: 'text-orange-600' },
+      manual: { label: 'Manual', icon: FileText, color: 'text-slate-600' },
+      pending: { label: 'A Definir', icon: Clock, color: 'text-gray-400' },
+    };
+    return configs[method || 'pending'] || configs.pending;
+  };
+
+  // Handlers
+  const handleChargeCreated = (newCharge: Charge) => {
+    setCharges(prev => [newCharge, ...prev]);
+    loadData(); // Recarregar métricas
+    toast.success('Cobrança criada com sucesso!');
+  };
+
+  // Handler para seleção de fluxo de cobrança (2 opções: interna ou externa)
+  const handleSelectFlow = (flow: 'internal' | 'external') => {
+    setShowFlowSelector(false);
+
+    // Pequeno delay para evitar glitch visual
+    setTimeout(() => {
+      if (flow === 'internal') {
+        setShowInternalModal(true);
+      } else if (flow === 'external') {
+        setShowExternalModal(true);
+      }
+    }, 100);
+  };
+
+  const handleOpenDetail = (charge: Charge) => {
+    setSelectedCharge(charge);
+    setShowDetailPanel(true);
+  };
+
+  const handleChargeUpdated = (updated: Charge) => {
+    setCharges(prev => prev.map(c => c.id === updated.id ? updated : c));
+    setSelectedCharge(updated);
+    loadData(); // Recarregar métricas
+  };
+
+  const handleMarkAsPaid = (e: React.MouseEvent, charge: Charge) => {
+    e.stopPropagation();
+    const updated = chargeService.updateCharge(charge.id, {
+      status: 'paid',
+      paidAt: new Date().toISOString(),
+    });
+    if (updated) {
+      setCharges(prev => prev.map(c => c.id === charge.id ? updated : c));
+      loadData();
+      toast.success(`Cobrança de ${charge.clientName} marcada como paga!`);
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent, charge: Charge) => {
+    e.stopPropagation();
+    if (confirm(`Tem certeza que deseja excluir a cobrança de ${charge.clientName}?`)) {
+      chargeService.deleteCharge(charge.id);
+      setCharges(prev => prev.filter(c => c.id !== charge.id));
+      loadData();
+      toast.success('Cobrança excluída');
+    }
+  };
+
+  const handleCreateFollowUp = (charge: Charge) => {
+    // Preparar integração com follow-up
+    toast.info('Funcionalidade de follow-up será implementada em breve');
+    // Futuro: criar follow-up financeiro vinculado à cobrança
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestão de Cobranças</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Cobranças</h1>
           <p className="text-muted-foreground mt-1">
-            Faturamento, controle de recebíveis e réguas de cobrança
+            Controle de recebíveis e gestão de pagamentos
           </p>
         </div>
         <Button 
           className="gap-2" 
           size="lg"
-          onClick={() => setShowNewChargeModal(true)}
+          onClick={() => setShowFlowSelector(true)}
         >
           <Plus className="h-4 w-4" />
           Nova Cobrança
         </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="bg-muted/50 p-1">
-          <TabsTrigger value="list" className="gap-2">
-            <DollarSign className="h-4 w-4" />
-            Cobranças
-          </TabsTrigger>
-          <TabsTrigger value="followup" className="gap-2">
-            <History className="h-4 w-4" />
-            Acompanhamento (Follow-up)
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
-            <SettingsIcon className="h-4 w-4" />
-            Configurações
-          </TabsTrigger>
-        </TabsList>
+      {/* Métricas Simplificadas - 4 cards principais */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total a Receber */}
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Total a Receber
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-800">{formatCurrency(metrics.totalReceivable)}</div>
+            <p className="text-xs text-blue-600 mt-1">Em cobranças pendentes</p>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="list" className="space-y-6 animate-in fade-in duration-300">
-          {/* Métricas */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total em Aberto</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground">{formatCurrency(metrics.totalOpen)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Aguardando recebimento</p>
-              </CardContent>
-            </Card>
+        {/* Vencendo Hoje */}
+        <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-amber-700 flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Vencendo Hoje
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-800">{metrics.countDueToday}</div>
+            <p className="text-xs text-amber-600 mt-1">{formatCurrency(metrics.dueToday)}</p>
+          </CardContent>
+        </Card>
 
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-destructive">Vencidas</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive">{metrics.overdueCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">Cobranças atrasadas</p>
-              </CardContent>
-            </Card>
+        {/* Vencidas */}
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              Vencidas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-800">{metrics.countOverdue}</div>
+            <p className="text-xs text-red-600 mt-1">{formatCurrency(metrics.overdue)}</p>
+          </CardContent>
+        </Card>
 
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400">Vencendo Hoje</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{metrics.dueTodayCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">Ação imediata necessária</p>
-              </CardContent>
-            </Card>
+        {/* Pagas no Mês */}
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-green-700 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Pagas no Mês
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-800">{metrics.countPaidThisMonth}</div>
+            <p className="text-xs text-green-600 mt-1">{formatCurrency(metrics.paidThisMonth)}</p>
+          </CardContent>
+        </Card>
+      </div>
 
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-green-600 dark:text-green-400">Pagas</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400">{metrics.paidCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">{formatCurrency(metrics.totalPaid)}</p>
-              </CardContent>
-            </Card>
+      {/* Busca e Filtros */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Campo de Busca */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por cliente, descrição ou e-mail..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
 
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400">Taxa Pagamento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{metrics.paymentRate.toFixed(1)}%</div>
-                <p className="text-xs text-muted-foreground mt-1">Do total em aberto</p>
-              </CardContent>
-            </Card>
+            {/* Filtro de Status */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="draft">Criada</SelectItem>
+                <SelectItem value="scheduled">Gerada</SelectItem>
+                <SelectItem value="sent">Enviada</SelectItem>
+                <SelectItem value="viewed">Visualizada</SelectItem>
+                <SelectItem value="overdue">Vencida</SelectItem>
+                <SelectItem value="paid">Paga</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Filtro de Forma de Pagamento */}
+            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Forma de Cobrança" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as formas</SelectItem>
+                <SelectItem value="pix">PIX</SelectItem>
+                <SelectItem value="boleto">Boleto</SelectItem>
+                <SelectItem value="credit_card">Cartão</SelectItem>
+                <SelectItem value="external">Externa (Link/ERP)</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Filtros e Busca */}
-          <Card className="bg-card border-border">
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                {/* Busca */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por cliente ou descrição..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 bg-background"
-                  />
-                </div>
-
-                {/* Filtros Rápidos */}
-                <div className="border-t border-border/50 pt-4">
-                  <QuickFilters
-                    charges={charges}
-                    selectedFilters={quickFilters}
-                    onFiltersChange={setQuickFilters}
-                  />
-                </div>
-
-                <Separator />
-
-                {/* Filtros de Status */}
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { value: 'draft', label: 'Rascunho' },
-                    { value: 'scheduled', label: 'Agendada' },
-                    { value: 'sent', label: 'Enviada' },
-                    { value: 'viewed', label: 'Visualizada' },
-                    { value: 'paid', label: 'Paga' },
-                    { value: 'overdue', label: 'Vencida' },
-                    { value: 'cancelled', label: 'Cancelada' },
-                  ].map(status => (
-                    <Button
-                      key={status.value}
-                      variant={selectedStatus.includes(status.value) ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setSelectedStatus(prev =>
-                          prev.includes(status.value)
-                            ? prev.filter(s => s !== status.value)
-                            : [...prev, status.value]
-                        );
-                      }}
-                    >
-                      {status.label}
-                    </Button>
-                  ))}
-                </div>
-
-                {/* Toggles Adicionais */}
-                <div className="flex gap-3 items-center">
-                  <Button
-                    variant={showArchived ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowArchived(!showArchived)}
-                    className="gap-2"
-                  >
-                    <Archive className="h-4 w-4" />
-                    Mostrar Arquivadas
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Lista de Cobranças */}
-          <Card className="bg-card border-border">
-            <CardHeader>
-              <CardTitle>{filteredCharges.length} Cobrança{filteredCharges.length !== 1 ? 's' : ''}</CardTitle>
-            </CardHeader>
-            <CardContent>
+      {/* Lista de Cobranças */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">
+            {filteredCharges.length} Cobrança{filteredCharges.length !== 1 ? 's' : ''}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+                <TableHead>Vencimento</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Forma</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filteredCharges.length === 0 ? (
-                <div className="py-12 text-center">
-                  <DollarSign className="h-12 w-12 text-muted-foreground/40 mx-auto mb-4" />
-                  <p className="text-muted-foreground">Nenhuma cobrança encontrada</p>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                  {filteredCharges.map(charge => (
-                    <div
-                      key={charge.id}
-                      onClick={() => {
-                        setSelectedChargeForDetail(charge);
-                        setShowDetailPanel(true);
-                      }}
-                      className="flex items-center gap-4 p-4 border border-border rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer"
-                    >
-                      {/* Info Básica */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-foreground truncate max-w-[200px] sm:max-w-[400px]">{charge.clientName}</h3>
-                          {getStatusBadge(charge.status)}
-                          {charge.paymentDetails?.provider && (
-                            <Badge variant="outline" className="bg-blue/5 text-blue border-blue/20 text-xs">
-                              {charge.paymentDetails.provider === 'asaas' ? 'Asaas' :
-                               charge.paymentDetails.provider === 'mercadopago' ? 'Mercado Pago' :
-                               charge.paymentDetails.provider === 'stripe' ? 'Stripe' :
-                               charge.paymentDetails.provider === 'manual' ? '🔗 Link Manual' : 'Gateway'}
-                            </Badge>
-                          )}
-                          {charge.automationEnabled ? (
-                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 gap-1">
-                              <CheckCircle2 className="h-3 w-3" />
-                              Automação Ativa
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-secondary/50 text-muted-foreground border-border gap-1">
-                              Automação Inativa
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground truncate">{charge.description}</p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          <span>Vencimento: {formatDate(charge.dueDate)}</span>
-                          {charge.lastSentAt && <span>Enviada: {formatDate(charge.lastSentAt)}</span>}
-                          {charge.paidAt && <span>Paga: {formatDate(charge.paidAt)}</span>}
-                        </div>
-                      </div>
-
-                      {/* Valor */}
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-foreground">{formatCurrency(charge.value)}</div>
-                        {charge.responsible && (
-                          <p className="text-xs text-muted-foreground">{charge.responsible}</p>
-                        )}
-                      </div>
-
-                      {/* Ações */}
-                      <ChargeActionsMenu
-                        charge={charge}
-                        onDelete={handleDelete}
-                        onAutomation={handleOpenAutomation}
-                        onMarkAsPaid={handleMarkAsPaid}
-                        onResend={(id) => handleSendCharge(id, 'whatsapp')}
-                        onGeneration={handleOpenGeneration}
-                        onViewPaymentLinks={(charge) => {
-                          setSelectedChargeForPaymentLinks(charge);
-                          setShowPaymentLinksDrawer(true);
-                        }}
-                      />
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <FileText className="w-8 h-8 text-muted-foreground/50" />
+                      <p>Nenhuma cobrança encontrada</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setShowFlowSelector(true)}
+                        className="mt-2"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Criar primeira cobrança
+                      </Button>
                     </div>
-                  ))}
-                </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredCharges.map((charge) => {
+                  const statusConfig = getStatusConfig(charge.status);
+                  const paymentConfig = getPaymentMethodConfig(charge.paymentMethod);
+                  const StatusIcon = statusConfig.icon;
+                  const PaymentIcon = paymentConfig.icon;
+
+                  return (
+                    <TableRow
+                      key={charge.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleOpenDetail(charge)}
+                    >
+                      <TableCell>
+                        <div className="font-medium">{charge.clientName}</div>
+                        {charge.clientEmail && (
+                          <div className="text-sm text-muted-foreground">{charge.clientEmail}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-xs truncate" title={charge.description}>
+                          {charge.description}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(charge.value)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          {formatDate(charge.dueDate)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${statusConfig.color} gap-1`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {statusConfig.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <PaymentIcon className={`h-4 w-4 ${paymentConfig.color}`} />
+                          <span className="text-sm">{paymentConfig.label}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDetail(charge);
+                            }}>
+                              <Eye className="w-4 h-4 mr-2" />
+                              Ver detalhes
+                            </DropdownMenuItem>
+                            
+                            {charge.status !== 'paid' && charge.status !== 'cancelled' && (
+                              <DropdownMenuItem onClick={(e) => handleMarkAsPaid(e, charge)}>
+                                <CheckCircle2 className="w-4 h-4 mr-2" />
+                                Marcar como paga
+                              </DropdownMenuItem>
+                            )}
+
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              handleCreateFollowUp(charge);
+                            }}>
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              Criar follow-up
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
+                              toast.info('Funcionalidade de conversa em desenvolvimento');
+                            }}>
+                              <MessageCircle className="w-4 h-4 mr-2" />
+                              Abrir conversa
+                            </DropdownMenuItem>
+
+                            <Separator className="my-1" />
+
+                            <DropdownMenuItem 
+                              className="text-destructive"
+                              onClick={(e) => handleDelete(e, charge)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="followup" className="animate-in fade-in slide-in-from-left-4 duration-300">
-           <Card className="bg-card border-border">
-             <CardContent className="pt-6">
-                <ChargeFollowUpTab charges={charges} />
-             </CardContent>
-           </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Modais de Fluxo de Cobrança */}
+      <ChargeFlowSelector
+        open={showFlowSelector}
+        onOpenChange={setShowFlowSelector}
+        onSelectFlow={handleSelectFlow}
+      />
 
-      {/* Modal de Nova Cobrança */}
-      <NewChargeModal 
-        open={showNewChargeModal}
-        onOpenChange={setShowNewChargeModal}
+      <InternalChargeModal
+        open={showInternalModal}
+        onOpenChange={setShowInternalModal}
         onChargeCreated={handleChargeCreated}
       />
 
-      {/* Modal de Geração de Cobrança */}
-      {selectedChargeForGeneration && (
-        <ChargeGenerationModal
-          open={showGenerationModal}
-          onOpenChange={setShowGenerationModal}
-          charge={selectedChargeForGeneration}
-          onGenerated={handleChargeGenerated}
-        />
-      )}
-
-      {/* Modal de Automação */}
-      {selectedChargeForAutomation && (
-        <ChargeAutomationModal
-          open={showAutomationModal}
-          onOpenChange={setShowAutomationModal}
-          chargeId={selectedChargeForAutomation.id}
-          chargeName={selectedChargeForAutomation.name}
-          onSave={(automation) => {
-            toast.success('Automação configurada com sucesso');
-          }}
-        />
-      )}
-
-      {/* Painel de Detalhes */}
-      <ChargeDetailPanel
-        open={showDetailPanel}
-        onOpenChange={setShowDetailPanel}
-        charge={selectedChargeForDetail}
-        onAutomation={handleOpenAutomation}
-        onSendCharge={(id, channel) => handleSendCharge(id, channel)}
-        onMarkAsPaid={handleMarkAsPaid}
-        onResend={(id) => handleSendCharge(id, 'whatsapp')}
+      <ExternalChargeModal
+        open={showExternalModal}
+        onOpenChange={setShowExternalModal}
+        onChargeCreated={handleChargeCreated}
       />
 
-      {/* Drawer de Links de Pagamento */}
-      <PaymentLinksDrawer
-        open={showPaymentLinksDrawer}
-        onOpenChange={setShowPaymentLinksDrawer}
-        charge={selectedChargeForPaymentLinks}
+      <SendChargeModal
+        open={showSendModal}
+        onOpenChange={setShowSendModal}
+        onChargeCreated={handleChargeCreated}
+      />
+
+      <SimpleChargeDetailPanel
+        charge={selectedCharge}
+        open={showDetailPanel}
+        onOpenChange={setShowDetailPanel}
+        onChargeUpdated={handleChargeUpdated}
+        onCreateFollowUp={handleCreateFollowUp}
       />
     </div>
   );

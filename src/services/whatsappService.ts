@@ -1,57 +1,514 @@
-/**
- * Serviço de WhatsApp - ARQUITETURA CORPORATIVA
- * 
- * Responsabilidades:
- * - Geração de mensagens a partir de templates
- * - Registro auditável de eventos em charge_events
- * - Preparação para integração futura com APIs (Twilio, MessageBird, etc)
- * - Validação e formatação de telefones
- * 
- * Fluxo arquitetônico:
- * Component (ChargeWhatsAppModal) -> whatsappService -> chargeService -> Supabase
- */
-
-import type { Charge } from '@/types';
 import { supabase } from '@/lib/supabaseClient';
+import { 
+  BaseWhatsAppProvider, 
+  WhatsAppProviderFactory,
+  WhatsAppMetaProvider,
+  type WhatsAppProviderType,
+  type UnifiedWhatsAppConfig,
+  type ConnectionStatus 
+} from '@/providers/whatsapp';
 
-export interface WhatsAppMessageOptions {
-  includePaymentLink?: boolean;
-  includeQRCode?: boolean;
-  includeBarcodeInfo?: boolean;
-  tone?: 'formal' | 'casual' | 'urgent';
+// =====================================================
+// INTERFACES (mantidas para compatibilidade)
+// =====================================================
+
+export interface WhatsAppSettings {
+  phone_number_id: string;
+  business_account_id?: string;
+  encrypted_access_token: string;
+  access_token?: string; // Campo temporário para envio (será criptografado)
+  verify_token: string;
+  webhook_status: 'active' | 'inactive' | 'error';
+  last_test_status: 'success' | 'failed' | null;
+  last_test_message: string | null;
+  last_test_at: string | null;
+  updated_at: string;
 }
 
-export interface WhatsAppEventData {
-  chargeId: string;
-  tenantId?: string;
-  eventType: 'whatsapp_opened' | 'whatsapp_sent_manual' | 'whatsapp_api_sent';
-  description: string;
+export interface TestWhatsAppResponse {
+  success: boolean;
+  message: string;
+  tested_at: string;
+}
+
+export interface SendWhatsAppResponse {
+  success: boolean;
+  messageId?: string;
+  sent_at?: string;
+  error?: string;
+}
+
+export interface WhatsAppContact {
+  id: string;
+  tenant_id: string;
+  name: string;
+  phone: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsAppConversation {
+  id: string;
+  tenant_id: string;
+  contact_id: string;
   channel: 'whatsapp';
-  createdBy: string;
-  phoneNumber?: string;
-  messagePreview?: string;
-  metadata?: Record<string, any>;
+  status: 'active' | 'waiting_human' | 'resolved';
+  last_message_at: string;
+  created_at: string;
+  updated_at: string;
+  contact?: WhatsAppContact;
+  last_message?: string;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  tenant_id: string;
+  conversation_id: string;
+  contact_id: string;
+  direction: 'inbound' | 'outbound';
+  content: string;
+  provider_message_id: string;
+  message_type: 'text' | 'image' | 'document' | 'audio';
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  sent_at: string;
+  created_at: string;
 }
 
 class WhatsAppService {
+  // =====================================================
+  // CACHE DE PROVIDERS (uma instância por tenant)
+  // =====================================================
+  private providers: Map<string, BaseWhatsAppProvider> = new Map();
+
+  // =====================================================
+  // CRIPTOGRAFIA DO ACCESS TOKEN
+  // =====================================================
+
+  private async encryptApiKey(apiKey: string, tenantId: string): Promise<string> {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase.functions.invoke('encrypt-api-key', {
+        body: { apiKey, tenantId },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (error) {
+        throw new Error(`Erro ao criptografar: ${error.message}`);
+      }
+
+      if (!data?.encrypted) {
+        throw new Error('Resposta de criptografia inválida');
+      }
+
+      return data.encrypted;
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao criptografar API key:', error);
+      throw error;
+    }
+  }
+
+  // =====================================================
+  // MÉTODOS DE CONFIGURAÇÃO UNIFICADA (NOVOS)
+  // =====================================================
+
+  async getUnifiedConfig(tenantId: string, providerType: WhatsAppProviderType = 'whatsapp_meta'): Promise<UnifiedWhatsAppConfig | null> {
+    try {
+      const { data, error } = await supabase
+        .from('tenant_whatsapp_configs')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('provider_type', providerType)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return data as UnifiedWhatsAppConfig | null;
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao buscar config unificada:', error);
+      return null;
+    }
+  }
+
+  async saveUnifiedConfig(
+    tenantId: string, 
+    providerType: WhatsAppProviderType, 
+    config: Partial<UnifiedWhatsAppConfig>
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const payload = {
+        tenant_id: tenantId,
+        provider_type: providerType,
+        ...config,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('tenant_whatsapp_configs')
+        .upsert(payload, { onConflict: 'tenant_id,provider_type' })
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao salvar config unificada:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getProvider(tenantId: string): Promise<BaseWhatsAppProvider | null> {
+    if (this.providers.has(tenantId)) {
+      return this.providers.get(tenantId)!;
+    }
+
+    const config = await this.getUnifiedConfig(tenantId, 'whatsapp_meta');
+    
+    if (!config) {
+      console.warn(`[WhatsAppService] Nenhuma config encontrada para tenant ${tenantId}`);
+      return null;
+    }
+
+    const provider = WhatsAppProviderFactory.create(config.provider_type, tenantId);
+    await provider.initialize(config);
+
+    this.providers.set(tenantId, provider);
+    return provider;
+  }
+
+  clearProvider(tenantId: string): void {
+    this.providers.delete(tenantId);
+  }
+
+  // =====================================================
+  // MÉTODOS LEGADOS (mantidos para compatibilidade)
+  // =====================================================
+  
   /**
-   * Formata número de telefone para uso no wa.me
-   * Remove tudo que não é dígito, mantém apenas números
+   * Salvar configurações do WhatsApp (DUAL-WRITE)
+   * - Grava na tabela antiga (tenant_whatsapp_settings) - PRINCIPAL
+   * - Grava na tabela nova (tenant_whatsapp_configs) - PREPARAÇÃO FUTURA
+   * - Se falhar na nova, loga erro mas não quebra a operação
    */
+  async saveSettings(tenantId: string, settings: Partial<WhatsAppSettings> & { access_token?: string }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      console.log('[WhatsAppService] Iniciando dual-write para tenant:', tenantId);
+
+      // =====================================================
+      // CRIPTOGRAFAR ACCESS TOKEN SE FORNECIDO
+      // =====================================================
+      let encryptedAccessToken = settings.encrypted_access_token;
+      
+      // Se recebeu access_token em texto plano (novo), criptografar
+      if (settings.access_token && settings.access_token.trim()) {
+        console.log('[WhatsAppService] Criptografando access token...');
+        encryptedAccessToken = await this.encryptApiKey(settings.access_token, tenantId);
+        console.log('[WhatsAppService] Access token criptografado com sucesso');
+      }
+
+      // =====================================================
+      // PASSO 1: SALVAR NA TABELA ANTIGA (PRINCIPAL)
+      // Esta é a fonte de verdade atual - NÃO PODE FALHAR
+      // =====================================================
+      const payloadAntigo: any = {
+        tenant_id: tenantId,
+        phone_number_id: settings.phone_number_id,
+        business_account_id: settings.business_account_id,
+        verify_token: settings.verify_token,
+        webhook_status: settings.webhook_status || 'inactive',
+        last_test_status: settings.last_test_status,
+        last_test_message: settings.last_test_message,
+        last_test_at: settings.last_test_at,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Adicionar token criptografado apenas se existir
+      if (encryptedAccessToken) {
+        payloadAntigo.encrypted_access_token = encryptedAccessToken;
+      }
+
+      const { data: dataAntigo, error: errorAntigo } = await supabase
+        .from('tenant_whatsapp_settings')
+        .upsert(payloadAntigo, { onConflict: 'tenant_id' })
+        .select()
+        .single();
+
+      if (errorAntigo) {
+        console.error('[WhatsAppService] ERRO CRÍTICO - Tabela antiga:', errorAntigo);
+        throw new Error(`Erro ao salvar configurações: ${errorAntigo.message}`);
+      }
+
+      console.log('[WhatsAppService] ✅ Tabela antiga (tenant_whatsapp_settings): OK');
+
+      // =====================================================
+      // PASSO 2: SALVAR NA TABELA NOVA (PREPARAÇÃO FUTURA)
+      // Se falhar, apenas loga warning - não quebra a operação
+      // =====================================================
+      try {
+        const unifiedConfig = {
+          tenant_id: tenantId,
+          provider_type: 'whatsapp_meta' as const,
+          connection_status: (settings.webhook_status === 'active' ? 'connected' : 'disconnected') as ConnectionStatus,
+          config: {
+            phoneNumberId: settings.phone_number_id || '',
+            businessAccountId: settings.business_account_id || '',
+            encryptedAccessToken: encryptedAccessToken || '',
+            verifyToken: settings.verify_token || '',
+          },
+          webhook_status: settings.webhook_status || 'inactive',
+          last_test_status: settings.last_test_status,
+          last_test_message: settings.last_test_message,
+          last_test_at: settings.last_test_at,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: errorNovo } = await supabase
+          .from('tenant_whatsapp_configs')
+          .upsert(unifiedConfig, { onConflict: 'tenant_id,provider_type' })
+          .select()
+          .single();
+
+        if (errorNovo) {
+          // Loga erro mas NÃO falha a operação
+          console.warn('[WhatsAppService] ⚠️ Tabela nova (tenant_whatsapp_configs): FALHA -', errorNovo.message);
+          console.warn('[WhatsAppService] A tabela antiga foi salva com sucesso. A nova tabela pode não existir ainda.');
+        } else {
+          console.log('[WhatsAppService] ✅ Tabela nova (tenant_whatsapp_configs): OK');
+        }
+      } catch (errorNovo: any) {
+        // Qualquer erro na nova tabela é logado mas não quebra
+        console.warn('[WhatsAppService] ⚠️ Tabela nova: EXCEÇÃO -', errorNovo.message);
+        console.warn('[WhatsAppService] Isso é normal se a migration ainda não foi executada.');
+      }
+
+      console.log('[WhatsAppService] Dual-write concluído. Tenant:', tenantId);
+      return { success: true };
+      
+    } catch (error: any) {
+      console.error('[WhatsAppService] Falha no dual-write:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getSettings(tenantId: string): Promise<WhatsAppSettings | null> {
+    try {
+      const { data, error } = await supabase
+        .from('tenant_whatsapp_settings')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+        throw error;
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao buscar configurações:', error);
+      return null;
+    }
+  }
+
+  async testConnection(tenantId: string): Promise<TestWhatsAppResponse> {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      console.log('[WhatsAppService] Testando conexão para tenant:', tenantId);
+
+      const { data, error } = await supabase.functions.invoke('test-whatsapp-connection', {
+        body: { tenantId },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      console.log('[WhatsAppService] Resposta do teste:', data);
+
+      if (error) {
+        console.error('[WhatsAppService] Erro no teste de conexão:', error);
+        throw new Error(error.message || 'Erro ao testar conexão');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      return {
+        success: data?.success || false,
+        message: data?.message || 'Teste concluído',
+        tested_at: data?.tested_at || new Date().toISOString(),
+      };
+    } catch (error: any) {
+      console.error('[WhatsAppService] Falha no teste de conexão:', error);
+      throw new Error(error.message || 'Erro desconhecido ao testar conexão');
+    }
+  }
+
+  async sendMessage(tenantId: string, to: string, message: string, conversationId?: string): Promise<SendWhatsAppResponse> {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      console.log('[WhatsAppService] Enviando mensagem para:', to);
+
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: { 
+          tenantId, 
+          to, 
+          message, 
+          conversationId 
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      console.log('[WhatsAppService] Resposta do envio:', data);
+
+      if (error) {
+        console.error('[WhatsAppService] Erro ao enviar mensagem:', error);
+        throw new Error(error.message || 'Erro ao enviar mensagem');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      return {
+        success: data?.success || false,
+        messageId: data?.messageId,
+        sent_at: data?.sent_at,
+      };
+    } catch (error: any) {
+      console.error('[WhatsAppService] Falha ao enviar mensagem:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro desconhecido ao enviar mensagem',
+      };
+    }
+  }
+
+  async getConversations(tenantId: string): Promise<WhatsAppConversation[]> {
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(`
+          *,
+          contact:contacts(id, name, phone)
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('channel', 'whatsapp')
+        .order('last_message_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      // Buscar última mensagem de cada conversa
+      const conversationsWithLastMessage = await Promise.all(
+        (data || []).map(async (conv: any) => {
+          const { data: lastMessage } = await supabase
+            .from('messages')
+            .select('content')
+            .eq('conversation_id', conv.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          return {
+            ...conv,
+            contact: conv.contact,
+            last_message: lastMessage?.content || 'Sem mensagens',
+          };
+        })
+      );
+
+      return conversationsWithLastMessage;
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao buscar conversas:', error);
+      return [];
+    }
+  }
+
+  async getMessages(conversationId: string): Promise<WhatsAppMessage[]> {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao buscar mensagens:', error);
+      return [];
+    }
+  }
+
+  getWebhookUrl(): string {
+    // URL real do webhook usando o project ref do Supabase
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://kezewdivrkmrvvbzocfl.supabase.co';
+    return `${supabaseUrl}/functions/v1/webhook-whatsapp`;
+  }
+
+  async markConversationAsRead(conversationId: string): Promise<void> {
+    try {
+      await supabase
+        .from('conversations')
+        .update({
+          status: 'active',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', conversationId);
+    } catch (error: any) {
+      console.error('[WhatsAppService] Erro ao marcar conversa como lida:', error);
+    }
+  }
+
+  // Métodos legados para compatibilidade com cobranças
   private cleanPhoneNumber(phone?: string): string {
     return (phone || '').replace(/\D/g, '');
   }
 
-  /**
-   * Valida se o número está com o formato mínimo (10-15 dígitos)
-   */
-  private isValidPhoneNumber(phone: string): boolean {
-    return phone.length >= 10 && phone.length <= 15;
-  }
-
-  /**
-   * Formata valor em moeda BRL
-   */
   private formatCurrency(value: number): string {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -59,13 +516,7 @@ class WhatsAppService {
     }).format(value);
   }
 
-  /**
-   * Formata data em português (ex: 25 de março de 2026)
-   */
-  private formatDate(dateStr: string, format: 'long' | 'short' = 'long'): string {
-    if (format === 'short') {
-      return new Date(dateStr).toLocaleDateString('pt-BR');
-    }
+  private formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
@@ -73,162 +524,33 @@ class WhatsAppService {
     });
   }
 
-  /**
-   * Extrai URL de pagamento (link clicável real)
-   * Prioridade: paymentLink > pixQrCode (se for URL)
-   * NÃO retorna códigos de texto (PIX, boleto)
-   */
-  private extractPaymentUrl(charge: Charge): string | null {
-    const { paymentDetails } = charge;
-    if (!paymentDetails) return null;
-
-    // Link de pagamento real (clicável)
-    if (paymentDetails.paymentLink && paymentDetails.paymentLink.startsWith('http')) {
-      return paymentDetails.paymentLink;
-    }
-
-    // PIX QR Code (se for uma URL, não é texto)
-    if (paymentDetails.pixQrCode && paymentDetails.pixQrCode.startsWith('http')) {
-      return paymentDetails.pixQrCode;
-    }
-
-    return null;
-  }
-
-  /**
-   * Extrai código de pagamento (texto puro)
-   * Prioridade: pixCode > boletoLine > boletoBarcode
-   * Estas são strings de cópia/cola, NÃO URLs
-   */
-  private extractPaymentCode(charge: Charge): { type: string; code: string } | null {
-    const { paymentDetails } = charge;
-    if (!paymentDetails) return null;
-
-    // Código PIX (cópia e cola)
-    if (paymentDetails.pixCode) {
-      return { type: 'pix', code: paymentDetails.pixCode };
-    }
-
-    // Linha digitável do boleto
-    if (paymentDetails.boletoLine) {
-      return { type: 'boleto', code: paymentDetails.boletoLine };
-    }
-
-    // Código de barras do boleto
-    if (paymentDetails.boletoBarcode) {
-      return { type: 'boleto', code: paymentDetails.boletoBarcode };
-    }
-
-    return null;
-  }
-
-  /**
-   * Extrai imagem QR Code do PIX (se disponível)
-   */
-  private extractPixQrCodeImage(charge: Charge): string | null {
-    const { paymentDetails } = charge;
-    if (!paymentDetails?.pixQrCode) return null;
-
-    // Se for URL (base64 ou imagem), retorna
-    if (
-      paymentDetails.pixQrCode.startsWith('data:') ||
-      paymentDetails.pixQrCode.startsWith('http')
-    ) {
-      return paymentDetails.pixQrCode;
-    }
-
-    return null;
-  }
-
-  /**
-   * CORE: Gera mensagem de cobrança para WhatsApp
-   * 
-   * Separa corretamente:
-   * - Links clicáveis (URLs)
-   * - Códigos de pagamento (PIX, boleto)
-   * 
-   * Saída esperada:
-   * "Olá, João! 👋
-   *  
-   *  Gostaríamos de lembrá-lo(a) de um pagamento pendente:
-   *  
-   *  📋 *Consulta - Janeiro/2026*
-   *  💰 Valor: *R$ 1.250,00*
-   *  📅 Vencimento: *25 de março de 2026*
-   *  
-   *  🔗 *Link para pagamento:*
-   *  https://asaas.com/...
-   *  
-   *  💳 *Ou copie o código PIX:*
-   *  12345.67890"
-   */
-  buildMessage(
-    charge: Charge,
-    options: WhatsAppMessageOptions = {}
-  ): string {
-    const {
-      includePaymentLink = true,
-      tone = 'casual',
-    } = options;
-
+  buildMessage(charge: any, options: any = {}): string {
     const lines: string[] = [];
     const firstName = charge.clientName?.split(' ')[0] || 'Cliente';
 
-    // Saudação (tom)
-    if (tone === 'urgent') {
-      lines.push(`Olá, ${firstName}! ⚠️`);
+    lines.push(`Olá, ${firstName}!`);
+    lines.push('');
+    lines.push(`Gostaríamos de lembrá-lo(a) de um pagamento pendente:`);
+    lines.push('');
+    lines.push(`*${charge.description}*`);
+    lines.push(`Valor: ${this.formatCurrency(charge.value)}`);
+    lines.push(`Vencimento: ${this.formatDate(charge.dueDate)}`);
+
+    if (charge.paymentDetails?.paymentLink) {
       lines.push('');
-      lines.push(`*ATENÇÃO*: Seu pagamento está VENCIDO!`);
-    } else {
-      lines.push(`Olá, ${firstName}! 👋`);
-      lines.push('');
-      lines.push(`Gostaríamos de lembrá-lo(a) de um pagamento pendente:`);
+      lines.push(`Link para pagamento:`);
+      lines.push(charge.paymentDetails.paymentLink);
     }
 
-    // Corpo da cobrança
     lines.push('');
-    lines.push(`📋 *${charge.description}*`);
-    lines.push(`💰 Valor: *${this.formatCurrency(charge.value)}*`);
-    lines.push(`📅 Vencimento: *${this.formatDate(charge.dueDate, 'long')}*`);
-
-    // Link de pagamento (se é URL real)
-    if (includePaymentLink) {
-      const paymentUrl = this.extractPaymentUrl(charge);
-
-      if (paymentUrl) {
-        lines.push('');
-        lines.push(`🔗 *Link para pagamento:*`);
-        lines.push(paymentUrl);
-      }
-
-      // Código de pagamento (PIX, boleto) - TEXTO PURO, não link
-      const paymentCode = this.extractPaymentCode(charge);
-
-      if (paymentCode) {
-        lines.push('');
-        if (paymentCode.type === 'pix') {
-          lines.push(`💳 *Ou copie o código PIX:*`);
-        } else {
-          lines.push(`💳 *Código de Barras:*`);
-        }
-        lines.push(paymentCode.code);
-      }
-    }
-
-    // Encerramento
-    lines.push('');
-    lines.push('Qualquer dúvida, estou à disposição. Obrigado! 🙏');
+    lines.push('Qualquer dúvida, estou à disposição.');
 
     return lines.join('\n');
   }
 
-  /**
-   * Abre WhatsApp Web (wa.me) com mensagem pré-preenchida
-   * Retorna URL que deve ser aberta em nova aba
-   */
-  getWhatsAppWebUrl(charge: Charge, message: string): { url: string; hasPhone: boolean } {
+  getWhatsAppWebUrl(charge: any, message: string): { url: string; hasPhone: boolean } {
     const phone = this.cleanPhoneNumber(charge.clientPhone);
-    const hasPhone = phone && this.isValidPhoneNumber(phone);
+    const hasPhone = phone.length >= 10 && phone.length <= 15;
     const encoded = encodeURIComponent(message.trim());
 
     const url = hasPhone
@@ -236,114 +558,6 @@ class WhatsAppService {
       : `https://wa.me/?text=${encoded}`;
 
     return { url, hasPhone };
-  }
-
-  /**
-   * ETAPA 2: Registra evento de WhatsApp em charge_events
-   * 
-   * Event types:
-   * - whatsapp_opened: Modal aberto, pronto para enviar pelo wa.me
-   * - whatsapp_sent_manual: Usuário clicou "Abrir no WhatsApp" (sai do app)
-   * - whatsapp_api_sent: (futuro) Enviado via Twilio/API
-   */
-  async logEvent(data: WhatsAppEventData): Promise<boolean> {
-    try {
-      // Validar UUID para operações no Supabase
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(data.chargeId)) {
-        console.log('[WhatsAppService] ID é mock, event não será registrado no banco');
-        return false;
-      }
-
-      const { error } = await supabase.from('charge_events').insert({
-        charge_id: data.chargeId,
-        tenant_id: data.tenantId,
-        event_type: data.eventType,
-        event_description: data.description,
-        channel: data.channel,
-        created_by: data.createdBy,
-        metadata: {
-          phone: data.phoneNumber,
-          message_preview: data.messagePreview?.substring(0, 150),
-          ...data.metadata,
-        },
-      });
-
-      if (error) {
-        console.warn('[WhatsAppService] Erro ao registrar evento:', error);
-        return false;
-      }
-
-      return true;
-    } catch (err) {
-      console.error('[WhatsAppService] Erro inesperado ao registrar evento:', err);
-      return false;
-    }
-  }
-
-  /**
-   * ETAPA 3: Prepara para integração futura com API externa
-   * 
-   * Exemplo de uso futuro:
-   * ```ts
-   * const result = await whatsappService.sendViaAPI(charge, message, {
-   *   provider: 'twilio', // ou 'messagebird', 'zenvia', etc
-   *   apiKey: process.env.TWILIO_API_KEY
-   * });
-   * ```
-   * 
-   * Por enquanto, retorna estrutura simulada
-   */
-  async sendViaAPI(
-    charge: Charge,
-    message: string,
-    config: {
-      provider?: 'twilio' | 'messagebird' | 'zenvia' | 'apivox';
-      apiKey?: string;
-      simulate?: boolean;
-    } = {}
-  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const { provider = 'apivox', simulate = true } = config;
-
-    if (simulate || !config.apiKey) {
-      // Modo simulação (para ambiente de desenvolvimento)
-      console.log(`[WhatsAppService] Simuladamente enviando via ${provider}`);
-      return {
-        success: true,
-        messageId: `sim_${Date.now()}`,
-      };
-    }
-
-    // Aqui virá a integração real com Twilio / MessageBird / etc
-    // TODO: Implementar quando houver chave de API
-    return {
-      success: false,
-      error: `Integração com ${provider} ainda não configurada`,
-    };
-  }
-
-  /**
-   * Extrai informações para log/debug
-   */
-  getSummary(charge: Charge): {
-    clientName: string;
-    clientPhone: string;
-    hasValidPhone: boolean;
-    hasPaymentData: boolean;
-    totalCharges?: number;
-  } {
-    const cleanPhone = this.cleanPhoneNumber(charge.clientPhone);
-    const hasValidPhone = this.isValidPhoneNumber(cleanPhone);
-    const hasPaymentUrl = !!this.extractPaymentUrl(charge);
-    const hasPaymentCode = !!this.extractPaymentCode(charge);
-    const hasPaymentData = hasPaymentUrl || hasPaymentCode;
-
-    return {
-      clientName: charge.clientName,
-      clientPhone: charge.clientPhone,
-      hasValidPhone,
-      hasPaymentData,
-    };
   }
 }
 

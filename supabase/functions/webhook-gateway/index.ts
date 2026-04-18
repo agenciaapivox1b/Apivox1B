@@ -9,12 +9,42 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+// Normalização de status para padrão interno
+function normalizeStatus(provider: string, status: string): string | null {
+  const normalized = status?.toLowerCase();
+  
+  switch (provider) {
+    case 'asaas':
+      if (['paid', 'received', 'confirmed'].includes(normalized)) return 'paid';
+      if (['pending', 'created'].includes(normalized)) return 'pending';
+      if (['overdue'].includes(normalized)) return 'overdue';
+      if (['canceled', 'deleted', 'refunded'].includes(normalized)) return 'canceled';
+      break;
+      
+    case 'mercadopago':
+      if (['approved'].includes(normalized)) return 'paid';
+      if (['pending', 'in_process', 'pending_payment'].includes(normalized)) return 'pending';
+      if (['rejected', 'cancelled', 'refunded'].includes(normalized)) return 'canceled';
+      break;
+      
+    case 'stripe':
+      if (['paid', 'succeeded'].includes(normalized)) return 'paid';
+      if (['pending', 'processing'].includes(normalized)) return 'pending';
+      if (['expired', 'canceled', 'failed'].includes(normalized)) return 'canceled';
+      break;
+  }
+  
+  return null;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   
   try {
     const url = new URL(req.url);
-    const provider = url.searchParams.get("provider") || "asaas";
+    let provider = url.searchParams.get("provider") || "asaas";
+    provider = provider.toLowerCase();
+    
     let payloadStr = await req.text();
     let body;
     
@@ -24,56 +54,89 @@ serve(async (req: Request) => {
       body = Object.fromEntries(new URLSearchParams(payloadStr));
     }
 
+    console.log(`[Webhook] Received event from ${provider}:`, JSON.stringify(body).substring(0, 500));
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const supabase = createClient(supabaseUrl!, supabaseKey!);
 
     let externalId = null;
     let newStatus = null;
+    let eventType = null;
     
-    console.log(`[Webhook Webhook] Revcevied ping from ${provider}`);
-
+    // Extrair informações específicas por provider
     if (provider === 'asaas') {
-      // Asaas event: PAYMENT_RECEIVED, PAYMENT_OVERDUE, etc.
-      if (!body.payment || !body.payment.id) return new Response("Ok", { status: 200 }); // Ignore
+      if (!body.payment?.id) {
+        console.log("[Webhook] Asaas: ignoring event without payment.id");
+        return new Response("Ok", { status: 200 });
+      }
       externalId = body.payment.id;
-      const eventType = body.event;
-      if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(eventType)) newStatus = 'paid';
-      if (['PAYMENT_OVERDUE', 'PAYMENT_DELETED', 'PAYMENT_REFUNDED'].includes(eventType)) newStatus = 'canceled';
-      // If PAYMENT_CREATED, keep pending
+      eventType = body.event;
+      const gatewayStatus = body.payment?.status?.toLowerCase();
+      newStatus = normalizeStatus(provider, gatewayStatus);
+      
     } else if (provider === 'mercadopago') {
+      // Webhook do Mercado Pago
       externalId = body.data?.id || body.id;
-      // MP actually sends limited payload, we might need to GET their API to know the status.
-      // But commonly, `topic="payment"` and `type="payment"`
-      // We will blindly map `action="payment.created"` to pending.
-      // Easiest is to consider MP 'approved' as paid.
-      // But MP payload might not have status. For robustness we should re-query MP.
-      // For now, if body.action == "payment.updated":
-      // We'll update if someone manually clicks update, but theoretically we should check status.
-      // MP status: 'approved' | 'rejected' | 'cancelled'
-      if (body.status === 'approved') newStatus = 'paid';
-      if (['rejected', 'cancelled'].includes(body.status)) newStatus = 'canceled';
+      eventType = body.type || body.action;
+      
+      // Para MP, muitas vezes precisamos consultar a API para obter o status real
+      if (externalId && (body.topic === "payment" || body.action === "payment.updated")) {
+        try {
+          const settings = await supabase
+            .from("tenant_charge_settings")
+            .select("encrypted_api_key")
+            .eq("gateway_name", "mercadopago")
+            .limit(1)
+            .single();
+            
+          if (settings?.encrypted_api_key) {
+            // Buscar status real na API do MP (implementação futura)
+            console.log("[Webhook] Mercado Pago: should fetch real status for", externalId);
+          }
+        } catch (e) {
+          console.warn("[Webhook] Could not fetch MP settings for status check");
+        }
+      }
+      
+      const gatewayStatus = body.status?.toLowerCase();
+      newStatus = normalizeStatus(provider, gatewayStatus);
+      
     } else if (provider === 'stripe') {
+      // Webhook do Stripe
       externalId = body.data?.object?.id;
-      const eventType = body.type;
-      if (eventType === 'checkout.session.completed') newStatus = 'paid';
-      if (eventType === 'checkout.session.expired') newStatus = 'canceled';
+      eventType = body.type;
+      
+      if (eventType === 'checkout.session.completed') {
+        newStatus = 'paid';
+      } else if (eventType === 'checkout.session.expired') {
+        newStatus = 'canceled';
+      } else if (eventType === 'payment_intent.succeeded') {
+        newStatus = 'paid';
+      } else if (eventType === 'payment_intent.payment_failed') {
+        newStatus = 'canceled';
+      }
     }
 
     if (!externalId) {
+      console.log("[Webhook] No external_id found, ignoring");
       return new Response("Missing external_id", { status: 400 });
     }
 
-    // 1. Log event
+    // 1. Log event sempre (para auditoria)
     await supabase.from("charge_events").insert({
       gateway: provider,
       gateway_payment_id: externalId,
+      event_type: eventType,
       payload: body,
-      processed: newStatus ? true : false
+      processed: !!newStatus,
+      created_at: new Date().toISOString()
     });
 
-    // 2. Update Charge if a definitive status was found
+    // 2. Update Charge apenas se temos um status definitivo
     if (newStatus) {
+       console.log(`[Webhook] Updating charge ${externalId} to status: ${newStatus}`);
+       
        const { data: chargeData, error: updateError } = await supabase
          .from("charges")
          .update({ 
@@ -89,6 +152,8 @@ serve(async (req: Request) => {
          console.error("Error updating charge status: ", updateError);
        } else if (newStatus === 'paid' && chargeData) {
          // --- AUTOMAÇÃO DE PÓS-VENDA ---
+         console.log(`[Post-Sale] Triggered for charge ${chargeData.id}`);
+         
          // 1. Buscar configurações do tenant
          const { data: settings } = await supabase
            .from("tenant_charge_settings")
@@ -98,7 +163,7 @@ serve(async (req: Request) => {
 
          const rules = settings?.automation_rules as any;
          if (rules?.enable_post_sale_upsell) {
-           console.log(`[Post-Sale] Triggered for tenant ${chargeData.tenant_id}`);
+           console.log(`[Post-Sale] Creating upsell opportunity for tenant ${chargeData.tenant_id}`);
            
            // A. Criar Oportunidade de Pós-Venda
            const { data: opData } = await supabase.from("opportunities").insert({
@@ -132,11 +197,13 @@ serve(async (req: Request) => {
            }
          }
        }
+    } else {
+      console.log(`[Webhook] No status change needed for ${externalId} from ${provider}`);
     }
 
-    return new Response("Webhook Computed", { status: 200, headers: corsHeaders });
+    return new Response("Webhook processed", { status: 200, headers: corsHeaders });
   } catch (err: any) {
     console.error("Webhook Error:", err);
-    return new Response("Error", { status: 500 });
+    return new Response("Error processing webhook: " + err.message, { status: 500 });
   }
 });

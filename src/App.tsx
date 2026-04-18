@@ -9,14 +9,17 @@ import AgentsPage from "./pages/AgentsPage";
 import InboxPage from "./pages/InboxPage";
 import AnalyticsPage from './pages/AnalyticsPage';
 import OpportunitiesPage from './pages/OpportunitiesPage';
-import FollowUpPage from './pages/FollowUpPage';
 import OpportunityDetailPage from './pages/OpportunityDetailPage';
+import FollowUpsPage from './pages/FollowUpsPage';
 import SalesFunnelPage from './pages/SalesFunnelPage';
+import CalendarPage from './pages/CalendarPage';
 import ActionsPage from './pages/ActionsPage';
 import KnowledgeBasePage from './pages/KnowledgeBasePage';
 import ChargePage from './pages/ChargePage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import MetricsConfigPage from './pages/MetricsConfigPage';
+import PlanosPage from './pages/PlanosPage';
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -48,15 +51,18 @@ const App = () => (
             <Route path="/agents" element={<ProtectedRoute><DashboardLayout><AgentsPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><DashboardLayout><InboxPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><DashboardLayout><AnalyticsPage /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/analytics/config" element={<ProtectedRoute><DashboardLayout><MetricsConfigPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/opportunities" element={<ProtectedRoute><DashboardLayout><OpportunitiesPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/opportunities/:id" element={<ProtectedRoute><DashboardLayout><OpportunityDetailPage /></DashboardLayout></ProtectedRoute>} />
-            <Route path="/follow-up" element={<Navigate to="/charges?tab=followup" replace />} />
+            <Route path="/agenda" element={<ProtectedRoute><DashboardLayout><CalendarPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/funnel" element={<ProtectedRoute><DashboardLayout><SalesFunnelPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/actions" element={<ProtectedRoute><DashboardLayout><ActionsPage /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/follow-ups" element={<ProtectedRoute><DashboardLayout><FollowUpsPage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/knowledge" element={<ProtectedRoute><DashboardLayout><KnowledgeBasePage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/charges" element={<ProtectedRoute><DashboardLayout><ChargePage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/perfil" element={<ProtectedRoute><DashboardLayout><ProfilePage /></DashboardLayout></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><DashboardLayout><SettingsPage /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/planos" element={<ProtectedRoute><DashboardLayout><PlanosPage /></DashboardLayout></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

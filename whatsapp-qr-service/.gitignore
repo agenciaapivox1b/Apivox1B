@@ -1,0 +1,47 @@
+# ============================================
+# ARQUIVOS IGNORADOS
+# ============================================
+
+# Dependências
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Sessões WhatsApp (NUNCA COMMITAR!)
+sessions/
+auth_info/
+*.auth.json
+
+# Ambiente
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Logs
+logs/
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testes
+coverage/
+.nyc_output/
+
+# Railway/Deploy
+.railway/

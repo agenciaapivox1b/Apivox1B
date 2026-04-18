@@ -25,6 +25,9 @@ import {
   DollarSign,
   ListTodo,
   ImageIcon,
+  Clock,
+  Calendar,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -38,6 +41,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import logoIcon from '@/assets/logoAPIVOX.png';
 import { tenantBrandingService } from '@/services/tenantBrandingService';
+import { TenantService } from '@/services/tenantService';
 
 const navItems = [
   { title: 'Início', url: '/', icon: LayoutDashboard },
@@ -46,6 +50,8 @@ const navItems = [
   { title: 'Funil de Vendas', url: '/funnel', icon: TrendingUp },
   { title: 'Cobranças', url: '/charges', icon: DollarSign },
   { title: 'Oportunidades', url: '/opportunities', icon: Lightbulb },
+  { title: 'Follow-ups', url: '/follow-ups', icon: RotateCcw },
+  { title: 'Agenda', url: '/agenda', icon: Calendar },
   { title: 'Ações', url: '/actions', icon: Zap },
 ];
 
@@ -72,30 +78,23 @@ export function AppSidebar() {
   useEffect(() => {
     const loadBranding = async () => {
       try {
-        const storedUser = localStorage.getItem('user');
-        let currentTenantId = '';
-
-        if (storedUser) {
-          try {
-            const parsedUser = JSON.parse(storedUser);
-            currentTenantId = parsedUser?.tenant_id || parsedUser?.id || '';
-          } catch (error) {
-            console.error('Erro ao ler user do localStorage:', error);
-          }
+        // Usar TenantService para obter o tenant_id correto (igual SettingsPage)
+        const currentTenantId = await TenantService.getCurrentTenantId();
+        
+        if (!currentTenantId) {
+          console.log('[AppSidebar] Não foi possível obter tenant_id');
+          return;
         }
 
-        if (!currentTenantId && user?.id) {
-          currentTenantId = user.id;
-        }
-
-        if (!currentTenantId) return;
-
+        console.log('[AppSidebar] Tenant ID obtido:', currentTenantId);
         const data = await tenantBrandingService.get(currentTenantId);
+        console.log('[AppSidebar] Branding carregado:', data);
+        
         if (data) {
           setBranding(data);
         }
       } catch (error) {
-        console.error('Erro ao carregar branding no sidebar:', error);
+        console.error('[AppSidebar] Erro ao carregar branding:', error);
       }
     };
 
@@ -124,20 +123,71 @@ export function AppSidebar() {
   const companyName = branding?.company_name?.trim() || 'APIVOX';
   const logoUrl = branding?.logo_url?.trim() || '';
 
-  const primaryColor =
+  console.log('[AppSidebar] Branding state:', { themeMode, companyName, logoUrl: logoUrl?.substring(0, 50), hasLogo: !!logoUrl });
+
+  // Cores personalizadas apenas para hover/accento (não aplica globalmente)
+  const accentColor =
     themeMode === 'custom'
       ? branding?.primary_color || APIVOX_PRIMARY
-      : APIVOX_PRIMARY;
+      : null; // null = usa cores padrão do sistema
 
-  const secondaryColor =
-    themeMode === 'custom'
-      ? branding?.secondary_color || APIVOX_SECONDARY
-      : APIVOX_SECONDARY;
+  // Aplicar CSS variables globalmente quando branding muda
+  useEffect(() => {
+    const root = document.documentElement;
+    
+    if (themeMode === 'custom' && branding?.primary_color) {
+      // Modo personalizado: aplicar cor do cliente
+      root.style.setProperty('--brand-primary', branding.primary_color);
+      root.style.setProperty('--brand-secondary', branding.secondary_color || APIVOX_SECONDARY);
+      root.style.setProperty('--brand-accent', branding.primary_color);
+    } else {
+      // Modo padrão: restaurar cores APIVOX
+      root.style.setProperty('--brand-primary', APIVOX_PRIMARY);
+      root.style.setProperty('--brand-secondary', APIVOX_SECONDARY);
+      root.style.setProperty('--brand-accent', APIVOX_PRIMARY);
+    }
+  }, [themeMode, branding?.primary_color, branding?.secondary_color]);
 
-  const sidebarTopBorder = `${primaryColor}55`;
-  const userBg = `${primaryColor}1A`;
-  const userBorder = `${primaryColor}33`;
-  const activeBg = `${primaryColor}1A`;
+  // Ouvir atualizações de branding de outras páginas (ex: SettingsPage)
+  useEffect(() => {
+    const handleBrandingUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('[AppSidebar] Evento branding-updated recebido:', customEvent.detail);
+      console.log('[AppSidebar] Comparing tenantId:', customEvent.detail?.tenantId, 'vs user?.id:', user?.id);
+      
+      // Recarregar sempre que receber o evento (mais seguro)
+      console.log('[AppSidebar] Recarregando branding por evento...');
+      loadBranding();
+    };
+
+    window.addEventListener('branding-updated', handleBrandingUpdate);
+    return () => window.removeEventListener('branding-updated', handleBrandingUpdate);
+  }, [user?.id]);
+
+  const loadBranding = async () => {
+    try {
+      // Usar TenantService para obter o tenant_id correto (igual SettingsPage)
+      const currentTenantId = await TenantService.getCurrentTenantId();
+      
+      if (!currentTenantId) {
+        console.log('[AppSidebar] Sem tenantId, skip loadBranding');
+        return;
+      }
+
+      console.log('[AppSidebar] Carregando branding para tenant:', currentTenantId);
+      const data = await tenantBrandingService.get(currentTenantId);
+      console.log('[AppSidebar] Dados recebidos:', data);
+      
+      if (data) {
+        console.log('[AppSidebar] Atualizando estado com:', { logo_url: data.logo_url?.substring(0, 50), company_name: data.company_name });
+        setBranding(data);
+      } else {
+        console.log('[AppSidebar] Nenhum dado retornado do service');
+      }
+    } catch (error) {
+      console.error('[AppSidebar] Erro ao carregar branding:', error);
+    }
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-card">
@@ -152,8 +202,8 @@ export function AppSidebar() {
           <div
             className={
               collapsed
-                ? 'h-14 w-14 flex items-center justify-center'
-                : 'w-full max-w-[200px] h-[90px] flex items-center justify-center'
+                ? 'h-14 w-14 rounded-xl border border-border bg-white flex items-center justify-center overflow-hidden'
+                : 'w-full max-w-[280px] h-[160px] rounded-xl border border-border bg-white flex items-center justify-center overflow-hidden shadow-sm px-3'
             }
           >
             <img
@@ -161,8 +211,8 @@ export function AppSidebar() {
               alt={companyName}
               className={
                 collapsed
-                  ? 'max-h-12 max-w-12 object-contain'
-                  : 'max-h-[90px] max-w-full object-contain'
+                  ? 'h-10 w-10 object-contain'
+                  : 'max-h-[140px] max-w-[260px] w-full object-contain'
               }
             />
           </div>
@@ -170,10 +220,9 @@ export function AppSidebar() {
           <div
             className={
               collapsed
-                ? 'h-14 w-14 rounded-xl border bg-white flex items-center justify-center overflow-hidden'
-                : 'w-full max-w-[200px] h-[90px] rounded-xl border bg-white flex items-center justify-center overflow-hidden'
+                ? 'h-14 w-14 rounded-xl border border-border bg-white flex items-center justify-center overflow-hidden'
+                : 'w-full max-w-[280px] h-[160px] rounded-xl border border-border bg-white flex items-center justify-center overflow-hidden shadow-sm px-3'
             }
-            style={{ borderColor: sidebarTopBorder }}
           >
             <img
               src={logoIcon}
@@ -181,7 +230,7 @@ export function AppSidebar() {
               className={
                 collapsed
                   ? 'h-10 w-10 object-contain'
-                  : 'max-h-[70px] max-w-[170px] object-contain'
+                  : 'max-h-[140px] max-w-[260px] w-full object-contain'
               }
             />
           </div>
@@ -192,7 +241,7 @@ export function AppSidebar() {
             <p className="text-sm font-semibold text-foreground truncate max-w-[220px]">
               {companyName}
             </p>
-            <p className="text-[11px] font-medium" style={{ color: secondaryColor }}>
+            <p className="text-[11px] font-medium text-muted-foreground">
               Powered by APIVOX
             </p>
           </div>
@@ -221,21 +270,16 @@ export function AppSidebar() {
                         to={item.url}
                         end={item.url === '/'}
                         className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-                        style={
-                          isActive
-                            ? {
-                                backgroundColor: activeBg,
-                                color: primaryColor,
-                                fontWeight: 600,
-                              }
-                            : {
-                                color: 'hsl(var(--muted-foreground))',
-                              }
-                        }
+                        style={{
+                          backgroundColor: isActive ? 'rgba(var(--brand-primary-rgb, 37, 99, 235), 0.1)' : 'transparent',
+                          color: isActive ? 'var(--brand-primary, #2563eb)' : 'hsl(var(--muted-foreground))',
+                        }}
                       >
                         <item.icon
                           className="h-4 w-4 shrink-0"
-                          style={isActive ? { color: primaryColor } : undefined}
+                          style={{
+                            color: isActive ? 'var(--brand-primary, #2563eb)' : 'currentColor',
+                          }}
                         />
                         {!collapsed && <span>{item.title}</span>}
                       </NavLink>
@@ -251,13 +295,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-border p-2">
         {!collapsed && (
           <div className="px-2 pb-2">
-            <div
-              className="rounded-md px-3 py-2 text-[11px]"
-              style={{
-                backgroundColor: `${secondaryColor}14`,
-                color: secondaryColor,
-              }}
-            >
+            <div className="rounded-md px-3 py-2 text-[11px] bg-muted text-muted-foreground">
               Automação e gestão por <span className="font-semibold">APIVOX</span>
             </div>
           </div>
@@ -266,13 +304,7 @@ export function AppSidebar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-secondary transition-colors outline-none text-left">
-              <div
-                className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 border"
-                style={{
-                  backgroundColor: userBg,
-                  borderColor: userBorder,
-                }}
-              >
+              <div className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 border bg-muted">
                 {logoUrl ? (
                   <img
                     src={logoUrl}
@@ -280,7 +312,7 @@ export function AppSidebar() {
                     className="h-6 w-6 object-contain rounded-full"
                   />
                 ) : (
-                  <span className="text-xs font-semibold" style={{ color: primaryColor }}>
+                  <span className="text-xs font-semibold text-blue-600">
                     {companyName.substring(0, 2).toUpperCase() || 'AX'}
                   </span>
                 )}

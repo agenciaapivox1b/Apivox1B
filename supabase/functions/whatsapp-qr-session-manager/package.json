@@ -1,0 +1,10 @@
+{
+  "name": "whatsapp-qr-functions",
+  "version": "1.0.0",
+  "description": "Edge Functions para WhatsApp QR Code com Baileys",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.6.0",
+    "@hapi/boom": "^10.0.1",
+    "qrcode": "^1.5.3"
+  }
+}

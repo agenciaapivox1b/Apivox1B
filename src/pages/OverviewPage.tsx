@@ -4,13 +4,23 @@ import { mockChartData } from '@/services/mockData';
 import type { ActivityItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Zap } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Zap, AlertCircle, Clock, ArrowRight } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 
 export default function OverviewPage() {
   const [metrics, setMetrics] = useState<Record<string, number> | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  
+  // Dados simulados de follow-ups (ganchos para premium)
+  const followUpStats = {
+    pending: 7,
+    overdue: 3,
+    total: 12
+  };
 
   useEffect(() => {
     Promise.all([api.getMetrics(), api.getActivities()]).then(([m, a]) => {
@@ -92,6 +102,44 @@ export default function OverviewPage() {
             </CardContent>
           </Card>
         ))}
+        
+        {/* Card de Follow-ups - Gatilho Premium */}
+        <Card 
+          className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => navigate('/follow-ups')}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-3xl font-bold text-foreground">{followUpStats.pending}</p>
+              <Badge className="bg-amber-500 text-white text-[10px]">
+                Premium
+              </Badge>
+            </div>
+            <p className="text-sm font-medium text-muted-foreground mb-2">Follow-ups Pendentes</p>
+            {followUpStats.overdue > 0 && (
+              <div className="flex items-center gap-1 text-red-600 text-xs">
+                <AlertCircle className="h-3 w-3" />
+                <span>{followUpStats.overdue} atrasados</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1 text-amber-600 text-xs mt-1">
+              <Clock className="h-3 w-3" />
+              <span>{followUpStats.total} no total</span>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="mt-3 h-7 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-100 p-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/follow-ups');
+              }}
+            >
+              Ver follow-ups
+              <ArrowRight className="h-3 w-3 ml-1" />
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">

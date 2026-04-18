@@ -10,13 +10,13 @@ import {
   X, MessageSquare, Phone, User, FileText, Send, Loader2, AlertCircle,
   Paperclip, Smile, Clock, CheckCircle2, XCircle, Download, Edit2, Archive
 } from 'lucide-react';
-import { chatService } from '@/services/chatService';
-import { botService } from '@/services/botService';
-import type { Message } from '@/types';
+import { whatsappService, type WhatsAppMessage } from '@/services/whatsappService';
+import { TenantService } from '@/services/tenantService';
 import { toast } from 'sonner';
+import FollowUpBlock from './FollowUpBlock';
 
 interface Lead {
-  id: number | string;
+  id: string;
   name: string;
   phone: string;
   interest?: string;
@@ -28,6 +28,15 @@ interface Lead {
   createdAt?: string;
   responsible?: string;
   email?: string;
+  // Campos extras para integração com Opportunity
+  contact_name?: string;
+  contact_phone?: string;
+  contact_email?: string;
+  contact_id?: string | null;
+  conversation_id?: string | null;
+  amount?: number;
+  description?: string;
+  status?: string;
 }
 
 interface Props {
@@ -37,7 +46,7 @@ interface Props {
 }
 
 export default function LeadDetailDrawer({ lead, onClose, onArchive }: Props) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [responseMessage, setResponseMessage] = useState('');
@@ -80,17 +89,28 @@ export default function LeadDetailDrawer({ lead, onClose, onArchive }: Props) {
     const loadConversation = async () => {
       try {
         setMessagesLoading(true);
-        const clientId = await botService.getCurrentClientId();
-        const conversations = await chatService.getClientConversations(clientId);
         
-        const cleanPhone = lead.phone.replace(/\D/g, '');
+        // Se já temos conversation_id da oportunidade, usamos diretamente
+        if (lead.conversation_id) {
+          setConversationId(lead.conversation_id);
+          const msgs = await whatsappService.getMessages(lead.conversation_id);
+          setMessages(msgs);
+          return;
+        }
+        
+        // Caso contrário, buscamos por telefone
+        const tenantId = await TenantService.getCurrentTenantId();
+        if (!tenantId) return;
+        
+        const conversations = await whatsappService.getConversations(tenantId);
+        const cleanPhone = (lead.contact_phone || lead.phone).replace(/\D/g, '');
         const conversation = conversations.find(c => 
-          c.contact_phone.replace(/\D/g, '') === cleanPhone
+          c.contact?.phone?.replace(/\D/g, '') === cleanPhone
         );
 
         if (conversation) {
           setConversationId(conversation.id);
-          const msgs = await chatService.getMessages(conversation.id);
+          const msgs = await whatsappService.getMessages(conversation.id);
           setMessages(msgs);
         }
       } catch (error) {
@@ -101,7 +121,7 @@ export default function LeadDetailDrawer({ lead, onClose, onArchive }: Props) {
     };
 
     loadConversation();
-  }, [lead.phone]);
+  }, [lead.conversation_id, lead.contact_phone, lead.phone]);
 
   const handleSendResponse = () => {
     if (!responseMessage.trim()) return;
@@ -246,11 +266,11 @@ export default function LeadDetailDrawer({ lead, onClose, onArchive }: Props) {
                         {messages.map((msg) => (
                           <div
                             key={msg.id}
-                            className={`flex ${msg.sender === 'user' ? 'justify-start' : 'justify-end'}`}
+                            className={`flex ${msg.direction === 'inbound' ? 'justify-start' : 'justify-end'}`}
                           >
                             <div
                               className={`max-w-[70%] p-3 rounded-2xl text-sm ${
-                                msg.sender === 'user'
+                                msg.direction === 'inbound'
                                   ? 'bg-card border border-border text-foreground rounded-tl-none'
                                   : 'bg-primary text-primary-foreground rounded-tr-none shadow-sm'
                               }`}
@@ -258,12 +278,12 @@ export default function LeadDetailDrawer({ lead, onClose, onArchive }: Props) {
                               <p>{msg.content}</p>
                               <div
                                 className={`text-[10px] mt-1 opacity-50 ${
-                                  msg.sender === 'user'
+                                  msg.direction === 'inbound'
                                     ? 'text-muted-foreground'
                                     : 'text-primary-foreground'
                                 }`}
                               >
-                                {new Date(msg.timestamp).toLocaleTimeString([], {
+                                {new Date(msg.sent_at).toLocaleTimeString([], {
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 })}
@@ -370,6 +390,9 @@ export default function LeadDetailDrawer({ lead, onClose, onArchive }: Props) {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Follow-up Block - Sistema de Ações/Tarefas */}
+              <FollowUpBlock opportunityId={lead.id} />
             </TabsContent>
 
             {/* Aba Linha do Tempo */}

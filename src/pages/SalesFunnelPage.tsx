@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 import {
   Search, Filter, Download, Settings, Plus, Download as DownloadIcon,
-  Upload, Archive, ChevronDown
+  Upload, Archive, ChevronDown, Briefcase, DollarSign, Users, TrendingUp
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -19,13 +23,15 @@ import FilterModal from '@/components/funnel/modals/FilterModal';
 import ReportModal from '@/components/funnel/modals/ReportModal';
 import ConfigModal from '@/components/funnel/modals/ConfigModal';
 import ImportModal from '@/components/funnel/modals/ImportModal';
+import { opportunityService, PIPELINE_STAGES, type Opportunity } from '@/services/crmService';
 
+// Mapear Opportunity para o formato Lead que os componentes esperam
 interface Lead {
-  id: string | number;
+  id: string;
   name: string;
   phone: string;
   observation?: string;
-  priority?: 'baixa' | 'média' | 'alta';
+  priority?: 'baixa' | 'media' | 'alta';
   reason?: string;
   context?: string;
   value?: number;
@@ -34,115 +40,95 @@ interface Lead {
   responsible?: string;
   email?: string;
   archived?: boolean;
+  // Campos extras do Opportunity
+  contact_name?: string;
+  contact_phone?: string;
+  contact_email?: string;
+  amount?: number;
+  status?: string;
+  description?: string;
+  conversation_id?: string | null;
+  contact_id?: string | null;
+  // Optional follow-up fields for card indicator
+  next_follow_up_date?: string;
+  next_follow_up_status?: 'pending' | 'overdue' | 'done' | 'canceled';
 }
 
-const mockLeads: Lead[] = [
-  {
-    id: 1,
-    name: 'Clínica Sorriso',
-    phone: '+55 11 98888-0001',
-    priority: 'alta',
-    reason: 'Pacote Premium',
-    context: 'Perguntou sobre automação',
-    observation: 'Gerente avalia soluções',
-    value: 5000,
-    stage: 'atendendo',
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: false,
-  },
-  {
-    id: 2,
-    name: 'João Advocacia',
-    phone: '+55 21 97777-0022',
-    priority: 'média',
-    reason: 'Integração CRM',
-    observation: 'Solicitou proposta',
-    value: 3500,
-    stage: 'qualificado',
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: false,
-  },
-  {
-    id: 3,
-    name: 'Restaurante Sabor',
-    phone: '+55 31 96666-0033',
-    priority: 'baixa',
-    reason: 'Agendamento',
-    observation: 'Demonstrou interesse inicial',
-    value: 1500,
-    stage: 'atendendo',
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: false,
-  },
-  {
-    id: 4,
-    name: 'Tech Solutions',
-    phone: '+55 11 95555-0004',
-    priority: 'alta',
-    reason: 'Pacote Enterprise',
-    observation: 'Fechamento em progresso',
-    value: 12000,
-    stage: 'qualificado',
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: false,
-  },
-  {
-    id: 5,
-    name: 'Loja Maria',
-    phone: '+55 85 94444-0005',
-    priority: 'média',
-    reason: 'Atendimento ao cliente',
-    observation: 'Cliente satisfeito',
-    value: 8000,
-    stage: 'ganhou',
-    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: false,
-  },
-  {
-    id: 6,
-    name: 'Serviços JP',
-    phone: '+55 48 93333-0006',
-    priority: 'baixa',
-    reason: 'Testes iniciais',
-    observation: 'Não viu valor',
-    value: 1000,
-    stage: 'perdido',
-    createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: false,
-  },
-  {
-    id: 7,
-    name: 'Clínica Vida',
-    phone: '+55 12 98765-0007',
-    priority: 'média',
-    reason: 'Consultoria inicial',
-    observation: 'Lead arquivado',
-    value: 2000,
-    stage: 'atendendo',
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    archived: true,
-  },
-];
+// Converter Opportunity para Lead
+const opportunityToLead = (opp: Opportunity): Lead => ({
+  id: opp.id,
+  name: opp.name,
+  phone: opp.contact_phone || '',
+  observation: opp.description,
+  priority: opp.priority === 'high' ? 'alta' : opp.priority === 'medium' ? 'media' : 'baixa',
+  reason: opp.source,
+  context: opp.description,
+  value: opp.amount,
+  stage: opp.status,
+  createdAt: opp.created_at,
+  responsible: opp.assigned_to_email,
+  email: opp.contact_email,
+  archived: false,
+  // Campos extras
+  contact_name: opp.contact_name,
+  contact_phone: opp.contact_phone,
+  contact_email: opp.contact_email,
+  amount: opp.amount,
+  status: opp.status,
+  description: opp.description,
+  conversation_id: opp.conversation_id,
+  contact_id: opp.contact_id,
+});
 
 export default function SalesFunnelPage() {
-  const [leads, setLeads] = useState<Lead[]>(mockLeads);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [currentView, setCurrentView] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-
+  const [loading, setLoading] = useState(true);
+  
   // Modals
   const [showNewLeadModal, setShowNewLeadModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-
+  const [showQuickActionModal, setShowQuickActionModal] = useState(false);
+  
   // Filters
   const [filters, setFilters] = useState({
     priority: [] as string[],
     stage: [] as string[],
     dateRange: { start: '', end: '' },
   });
+
+  // Carregar dados reais
+  useEffect(() => {
+    loadOpportunities();
+  }, []);
+
+  const loadOpportunities = async () => {
+    try {
+      setLoading(true);
+      const opportunities = await opportunityService.list();
+      const leadsData = opportunities.map(opportunityToLead);
+      setLeads(leadsData);
+    } catch (error: any) {
+      console.error('Erro ao carregar oportunidades:', error);
+      toast.error('Erro ao carregar oportunidades: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Métricas reais
+  const metrics = {
+    total: leads.length,
+    totalValue: leads.reduce((sum, lead) => sum + (lead.value || 0), 0),
+    active: leads.filter(l => !['fechado', 'perdido'].includes(l.stage)).length,
+    won: leads.filter(l => l.stage === 'fechado').length,
+  };
 
   // Filtros
   const filteredLeads = leads
@@ -151,7 +137,8 @@ export default function SalesFunnelPage() {
       if (showArchived && !lead.archived) return false;
       
       const matchesSearch = lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        lead.phone.includes(searchQuery);
+        lead.phone.includes(searchQuery) ||
+        (lead.contact_name && lead.contact_name.toLowerCase().includes(searchQuery.toLowerCase()));
       
       const matchesPriority = filters.priority.length === 0 || 
         (lead.priority && filters.priority.includes(lead.priority));
@@ -162,6 +149,19 @@ export default function SalesFunnelPage() {
       return matchesSearch && matchesPriority && matchesStage;
     });
 
+  // Mapear estágios do novo CRM para os nomes antigos usados na UI
+  const stageMapping: Record<string, { key: string; title: string }> = {
+    'descoberta': { key: 'atendendo', title: 'IA Atendendo' },
+    'proposta': { key: 'qualificado', title: 'Qualificado' },
+    'negociacao': { key: 'qualificado', title: 'Qualificado' },
+    'fechado': { key: 'ganhou', title: 'Ganhou' },
+    'perdido': { key: 'perdido', title: 'Perdido' },
+    'atendendo': { key: 'atendendo', title: 'IA Atendendo' },
+    'qualificado': { key: 'qualificado', title: 'Qualificado' },
+    'ganhou': { key: 'ganhou', title: 'Ganhou' },
+  };
+
+  // Agrupar leads por estágio visual
   const funnelStages = [
     { key: 'atendendo', title: 'IA Atendendo' },
     { key: 'qualificado', title: 'Qualificado' },
@@ -169,15 +169,23 @@ export default function SalesFunnelPage() {
     { key: 'perdido', title: 'Perdido' },
   ];
 
-  const handleAddLead = (newLead: Omit<Lead, 'id' | 'createdAt' | 'archived'>) => {
-    const lead: Lead = {
-      ...newLead,
-      id: Math.max(...leads.map(l => typeof l.id === 'number' ? l.id : 0)) + 1,
-      createdAt: new Date().toISOString(),
-      archived: false,
-    };
-    setLeads([...leads, lead]);
-    setShowNewLeadModal(false);
+  // Criar nova oportunidade via API
+  const handleAddLead = async (newLead: Omit<Lead, 'id' | 'createdAt' | 'archived'>) => {
+    try {
+      await opportunityService.create({
+        name: newLead.name,
+        amount: newLead.value || 0,
+        description: newLead.observation,
+        status: 'descoberta',
+        priority: newLead.priority === 'alta' ? 'high' : newLead.priority === 'media' ? 'medium' : 'low',
+      });
+      toast.success('Oportunidade criada com sucesso!');
+      setShowNewLeadModal(false);
+      // Recarregar dados
+      loadOpportunities();
+    } catch (error: any) {
+      toast.error('Erro ao criar oportunidade: ' + error.message);
+    }
   };
 
   const handleExport = () => {
@@ -218,10 +226,56 @@ export default function SalesFunnelPage() {
           <div>
             <h1 className="text-3xl font-bold text-foreground tracking-tight">Funil de Vendas</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {filteredLeads.length} lead{filteredLeads.length !== 1 ? 's' : ''} 
-              {showArchived ? ' arquivado(s)' : ' ativo(s)'}
+              {loading ? 'Carregando...' : `${filteredLeads.length} lead${filteredLeads.length !== 1 ? 's' : ''} ${showArchived ? ' arquivado(s)' : ' ativo(s)'}`}
             </p>
           </div>
+
+          {/* Métricas Reais */}
+          {!loading && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-blue-600" />
+                    <span className="text-xs text-muted-foreground">Total</span>
+                  </div>
+                  <div className="text-xl font-bold text-blue-700">{metrics.total}</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    <span className="text-xs text-muted-foreground">Valor Total</span>
+                  </div>
+                  <div className="text-xl font-bold text-green-700">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(metrics.totalValue)}
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-yellow-50 border-yellow-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-yellow-600" />
+                    <span className="text-xs text-muted-foreground">Ativos</span>
+                  </div>
+                  <div className="text-xl font-bold text-yellow-700">{metrics.active}</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-purple-50 border-purple-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-purple-600" />
+                    <span className="text-xs text-muted-foreground">Ganhas</span>
+                  </div>
+                  <div className="text-xl font-bold text-purple-700">{metrics.won}</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Filters and Actions */}
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-wrap">
@@ -304,20 +358,30 @@ export default function SalesFunnelPage() {
         </div>
       </div>
 
-      {/* Funnel Columns */}
+      {/* Funnel Columns - com mapeamento de estágios do banco para visuais */}
       <div className="p-6">
         <div className="overflow-x-auto">
           <div className="flex gap-6 min-w-max pb-6">
-            {funnelStages.map((stage) => (
-              <FunnelColumn
-                key={stage.key}
-                stage={stage.key}
-                title={stage.title}
-                leads={filteredLeads.filter(l => l.stage === stage.key)}
-                onLeadClick={(lead) => setSelectedLead(lead)}
-                onAddLead={() => setShowNewLeadModal(true)}
-              />
-            ))}
+            {funnelStages.map((stage) => {
+              // Mapear estágios visuais para estágios do banco
+              const dbStages = {
+                'atendendo': ['descoberta', 'atendendo'],
+                'qualificado': ['proposta', 'negociacao', 'qualificado'],
+                'ganhou': ['fechado', 'ganhou'],
+                'perdido': ['perdido']
+              }[stage.key] || [stage.key];
+              
+              return (
+                <FunnelColumn
+                  key={stage.key}
+                  stage={stage.key}
+                  title={stage.title}
+                  leads={filteredLeads.filter(l => dbStages.includes(l.stage))}
+                  onLeadClick={(lead) => setSelectedLead(lead)}
+                  onAddLead={() => setShowNewLeadModal(true)}
+                                  />
+              );
+            })}
           </div>
         </div>
       </div>

@@ -1,0 +1,13 @@
+# Supabase Configuration File
+
+[functions.create-payment-gateway]
+verify_jwt = false
+
+[functions.test-whatsapp-connection]
+verify_jwt = false
+
+[functions.auto-follow-up-check]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false

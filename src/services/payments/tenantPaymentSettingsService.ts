@@ -78,7 +78,7 @@ class TenantPaymentSettingsService {
 
       if (input.apiKey && input.apiKey.trim()) {
         try {
-          encryptedApiKey = await this.encryptApiKey(input.apiKey.trim());
+          encryptedApiKey = await this.encryptApiKey(input.apiKey.trim(), input.tenantId);
         } catch (err: any) {
           console.error('[TenantPaymentSettingsService] Erro ao criptografar API Key:', err?.message);
           return {
@@ -96,6 +96,8 @@ class TenantPaymentSettingsService {
         manual_payment_link_default: null,
         updated_at: new Date().toISOString(),
       };
+
+      console.log('[TenantPaymentSettingsService] Payload para upsert:', payload);
 
       const { error } = await supabase
         .from('tenant_charge_settings')
@@ -125,7 +127,7 @@ class TenantPaymentSettingsService {
     }
   }
 
-  private async encryptApiKey(apiKey: string): Promise<string> {
+  private async encryptApiKey(apiKey: string, tenantId: string): Promise<string> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const legacyAnonJwt = import.meta.env.VITE_SUPABASE_LEGACY_ANON_JWT;
@@ -149,7 +151,7 @@ class TenantPaymentSettingsService {
         apikey: publishableKey,
         Authorization: `Bearer ${legacyAnonJwt}`,
       },
-      body: JSON.stringify({ apiKey }),
+      body: JSON.stringify({ apiKey, tenantId }),
     });
 
     let data: any = null;
@@ -171,12 +173,14 @@ class TenantPaymentSettingsService {
       );
     }
 
-    if (!data?.success || !data?.encryptedApiKey) {
+    const encrypted =
+      data?.encryptedApiKey ?? data?.encrypted;
+    if (!data?.success || !encrypted) {
       console.error('[encryptApiKey] Resposta inválida:', data);
       throw new Error(data?.error || 'Resposta inválida da Edge Function encrypt-api-key');
     }
 
-    return data.encryptedApiKey;
+    return encrypted;
   }
 }
 

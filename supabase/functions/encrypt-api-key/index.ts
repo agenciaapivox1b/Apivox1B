@@ -140,6 +140,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         encrypted,
+        encryptedApiKey: encrypted,
       }),
       {
         headers: {

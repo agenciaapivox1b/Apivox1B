@@ -74,7 +74,8 @@ interface AsaasPixQrCodeResponse {
 // ============================================================================
 
 const ASAAS_API_BASE = "https://api.asaas.com/v3";
-const ASAAS_SANDBOX_BASE = "https://sandbox.asaas.com/v3";
+/** URL oficial da API sandbox (não usar sandbox.asaas.com para /v3). */
+const ASAAS_SANDBOX_BASE = "https://api-sandbox.asaas.com/v3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -452,7 +453,16 @@ serve(async (req: Request) => {
       );
     }
 
-    const asaasApiKey = decryptData.apiKey as string;
+    const asaasApiKey = String(decryptData.apiKey ?? "").trim();
+    console.log("[create-payment-asaas] Chave pós-decrypt:", {
+      length: asaasApiKey.length,
+      prefix: asaasApiKey.length >= 6 ? `${asaasApiKey.slice(0, 6)}…` : asaasApiKey.length ? "(curta)" : "(vazia)",
+      empty: asaasApiKey.length === 0,
+      useSandbox,
+    });
+    if (!asaasApiKey) {
+      return jsonResponse({ error: "Chave de API do Asaas vazia após descriptografia" }, 401);
+    }
 
     const payment = await createAsaasPayment(body, asaasApiKey, useSandbox);
     const response = await formatResponse(payment, body, asaasApiKey, useSandbox);

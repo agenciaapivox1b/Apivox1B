@@ -1,241 +1,210 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { mockChartData, mockConversations, mockBots } from '@/services/mockData';
-import { mockLeads } from '@/data/mockSalesData';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import {
+import { 
   TrendingUp,
-  TrendingDown,
   Users,
   MessageSquare,
   DollarSign,
   Target,
-  AlertTriangle,
-  CheckCircle,
-  ArrowRight,
+  Plus,
+  RefreshCw,
   Calendar,
-  Filter
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  AlertTriangle,
+  Briefcase,
+  Phone
 } from 'lucide-react';
-
-const topQuestions = [
-  { question: 'Qual o horário de funcionamento?', count: 142 },
-  { question: 'Como rastrear meu pedido?', count: 98 },
-  { question: 'Qual a política de reembolso?', count: 87 },
-  { question: 'Vocês oferecem frete grátis?', count: 76 },
-  { question: 'Como redefinir a senha?', count: 65 },
-];
-
-const failedQuestions = [
-  { question: 'Posso integrar com o SAP?', count: 23 },
-  { question: 'Vocês aceitam criptomoedas?', count: 18 },
-  { question: 'Qual o limite da API?', count: 12 },
-];
-
-const responseTimeData = [
-  { date: 'Feb 27', time: 1.2 }, { date: 'Feb 28', time: 1.1 },
-  { date: 'Mar 1', time: 0.9 }, { date: 'Mar 2', time: 1.0 },
-  { date: 'Mar 3', time: 0.8 }, { date: 'Mar 4', time: 0.7 },
-  { date: 'Mar 5', time: 0.6 },
-];
+import { metricsService, type StandardMetrics, type TenantMetricConfig } from '@/services/metricsService';
+import { TenantService } from '@/services/tenantService';
+import { toast } from 'sonner';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
-  const [selectedClient, setSelectedClient] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [standardMetrics, setStandardMetrics] = useState<StandardMetrics | null>(null);
+  const [customMetrics, setCustomMetrics] = useState<TenantMetricConfig[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, number>>({});
 
-  const tooltipStyle = {
-    background: 'hsl(var(--card))',
-    border: '1px solid hsl(var(--border))',
-    borderRadius: '12px',
-    fontSize: '12px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-  };
-
-  // Dados calculados dinamicamente
-  const metrics = useMemo(() => {
-    const totalConversations = mockConversations.length;
-    const totalLeads = mockLeads.length;
-    const qualifiedLeads = mockLeads.filter(l => l.status === 'Oportunidade').length;
-    const closedDeals = mockLeads.filter(l => l.status === 'Concluído').length;
-
-    // Taxas de conversão
-    const conversationToLeadRate = totalConversations > 0 ? (totalLeads / totalConversations) * 100 : 0;
-    const leadToCustomerRate = totalLeads > 0 ? (closedDeals / totalLeads) * 100 : 0;
-
-    // Valores financeiros
-    const totalEstimatedValue = mockLeads.reduce((sum, lead) => sum + lead.estimatedValue, 0);
-    const closedValue = mockLeads
-      .filter(l => l.status === 'Concluído')
-      .reduce((sum, lead) => sum + lead.estimatedValue, 0);
-
-    // Economia estimada (baseado em tempo economizado)
-    const avgResponseTime = 1.0; // minutos
-    const hourlyRate = 25; // R$ por hora
-    const estimatedSavings = (totalConversations * avgResponseTime / 60) * hourlyRate;
-
-    return {
-      totalConversations,
-      totalLeads,
-      qualifiedLeads,
-      closedDeals,
-      conversationToLeadRate,
-      leadToCustomerRate,
-      totalEstimatedValue,
-      closedValue,
-      estimatedSavings
-    };
-  }, []);
-
-  // Dados de comparação (simulados)
-  const comparisonData = useMemo(() => {
-    const todayConversations = 105;
-    const yesterdayConversations = 88;
-    const todayLeads = 18;
-    const yesterdayLeads = 15;
-
-    const conversationChange = ((todayConversations - yesterdayConversations) / yesterdayConversations) * 100;
-    const leadChange = ((todayLeads - yesterdayLeads) / yesterdayLeads) * 100;
-
-    return {
-      todayConversations,
-      yesterdayConversations,
-      todayLeads,
-      yesterdayLeads,
-      conversationChange,
-      leadChange
-    };
-  }, []);
-
-  // Insights automáticos
-  const insights = useMemo(() => {
-    const insights = [];
-
-    if (comparisonData.conversationChange < -10) {
-      insights.push({
-        type: 'warning',
-        icon: TrendingDown,
-        title: 'Queda nas Conversas',
-        description: `-${Math.abs(comparisonData.conversationChange).toFixed(1)}% vs ontem`,
-        action: 'Verificar campanhas ativas'
-      });
-    } else if (comparisonData.conversationChange > 15) {
-      insights.push({
-        type: 'success',
-        icon: TrendingUp,
-        title: 'Aumento nas Conversas',
-        description: `+${comparisonData.conversationChange.toFixed(1)}% vs ontem`,
-        action: 'Manter estratégia atual'
-      });
-    }
-
-    if (metrics.conversationToLeadRate < 15) {
-      insights.push({
-        type: 'warning',
-        icon: AlertTriangle,
-        title: 'Baixo Aproveitamento',
-        description: `Apenas ${metrics.conversationToLeadRate.toFixed(1)}% das conversas viram leads`,
-        action: 'Otimizar qualificação'
-      });
-    }
-
-    if (metrics.qualifiedLeads > metrics.totalLeads * 0.7) {
-      insights.push({
-        type: 'success',
-        icon: Target,
-        title: 'Pipeline Saudável',
-        description: `${((metrics.qualifiedLeads / metrics.totalLeads) * 100).toFixed(1)}% dos leads são oportunidades`,
-        action: 'Focar no fechamento'
-      });
-    }
-
-    return insights;
-  }, [metrics, comparisonData]);
-
-  // Dados do gráfico baseado no período selecionado
-  const chartData = useMemo(() => {
-    const baseData = mockChartData.conversationsPerDay;
-    const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
-
-    return baseData.slice(-days).map(item => ({
-      ...item,
-      leads: Math.floor(item.conversations * 0.18), // ~18% conversão
-      date: item.date
-    }));
+  useEffect(() => {
+    loadMetrics();
   }, [period]);
 
-  // Dados para gráfico de canais (simulado)
-  const channelData = [
-    { name: 'WhatsApp', value: 65, color: '#25D366' },
-    { name: 'Website', value: 25, color: '#3B82F6' },
-    { name: 'Instagram', value: 10, color: '#E4405F' }
-  ];
+  const loadMetrics = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Obter tenant_id real
+      const tenantId = await TenantService.getCurrentTenantId();
+      
+      if (!tenantId) {
+        console.error('[AnalyticsPage] Tenant ID não encontrado');
+        setError('Tenant não encontrado. Verifique se você está logado.');
+        toast.error('Erro ao carregar métricas: tenant não encontrado');
+        return;
+      }
+      
+      console.log('[AnalyticsPage] Carregando métricas para tenant:', tenantId);
+      
+      // Carregar métricas padrão
+      const standard = await metricsService.getStandardMetrics(tenantId);
+      console.log('[AnalyticsPage] Métricas padrão carregadas:', standard);
+      setStandardMetrics(standard);
 
-  const consolidatedMetrics = [
-    {
-      label: 'Total de Conversas',
-      value: metrics.totalConversations.toLocaleString(),
-      sub: 'Este mês',
-      change: comparisonData.conversationChange,
-      icon: MessageSquare
-    },
-    {
-      label: 'Leads Capturados',
-      value: metrics.totalLeads.toString(),
-      sub: 'Este mês',
-      change: comparisonData.leadChange,
-      icon: Users
-    },
-    {
-      label: 'Taxa de Conversão',
-      value: `${metrics.conversationToLeadRate.toFixed(1)}%`,
-      sub: 'Conversas → Leads',
-      change: null,
-      icon: Target
-    },
-    {
-      label: 'Economia Estimada',
-      value: `R$ ${metrics.estimatedSavings.toLocaleString()}`,
-      sub: 'Tempo economizado em atendimento',
-      change: null,
-      icon: DollarSign
-    },
-  ];
+      // Carregar configurações de métricas personalizadas
+      let configs: TenantMetricConfig[] = [];
+      try {
+        configs = await metricsService.getTenantMetricsConfig(tenantId);
+        console.log('[AnalyticsPage] Métricas personalizadas carregadas:', configs.length);
+      } catch (e: any) {
+        console.warn('[AnalyticsPage] Erro ao carregar métricas personalizadas (tabela pode não existir):', e.message);
+        configs = [];
+      }
+      setCustomMetrics(configs);
 
-  const monthlyData = [
-    { name: 'Jan', conversas: 12000, leads: 2100 },
-    { name: 'Fev', conversas: 13500, leads: 2400 },
-    { name: 'Mar', conversas: 15420, leads: 2840 },
-  ];
+      // Calcular valores das métricas personalizadas
+      const values: Record<string, number> = {};
+      for (const config of configs) {
+        try {
+          values[config.id] = await metricsService.calculateCustomMetric(config, tenantId);
+        } catch (e) {
+          console.warn(`[AnalyticsPage] Erro ao calcular métrica ${config.id}:`, e);
+          values[config.id] = 0;
+        }
+      }
+      setCustomValues(values);
+
+    } catch (error: any) {
+      console.error('Erro ao carregar métricas:', error);
+      setError(error.message || 'Erro ao carregar métricas');
+      toast.error('Erro ao carregar métricas: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value || 0);
+  };
+
+  const formatNumber = (value: number) => {
+    return new Intl.NumberFormat('pt-BR').format(value || 0);
+  };
+
+  // Seções estratégicas baseadas nas métricas
+  const getStrategicAlerts = () => {
+    if (!standardMetrics) return [];
+    
+    const alerts = [];
+    
+    // Ações Imediatas (vermelho/laranja)
+    if (standardMetrics.overdueFollowUps > 0) {
+      alerts.push({
+        type: 'urgent',
+        icon: AlertCircle,
+        title: `${standardMetrics.overdueFollowUps} Follow-ups Atrasados`,
+        description: 'Ações que passaram do prazo e precisam ser resolvidas',
+        color: 'text-red-600 bg-red-50 border-red-200'
+      });
+    }
+    
+    if (standardMetrics.atRiskCharges > 0) {
+      alerts.push({
+        type: 'warning',
+        icon: AlertTriangle,
+        title: `${standardMetrics.atRiskCharges} Cobranças em Risco`,
+        description: 'Cobranças vencidas ou próximas do vencimento',
+        color: 'text-orange-600 bg-orange-50 border-orange-200'
+      });
+    }
+    
+    if (standardMetrics.conversationsWithoutReply > 0) {
+      alerts.push({
+        type: 'action',
+        icon: MessageSquare,
+        title: `${standardMetrics.conversationsWithoutReply} Conversas sem Resposta`,
+        description: 'Mensagens aguardando retorno há mais de 2 horas',
+        color: 'text-yellow-600 bg-yellow-50 border-yellow-200'
+      });
+    }
+    
+    // Positivos (verde)
+    if (standardMetrics.conversionRate > 30) {
+      alerts.push({
+        type: 'success',
+        icon: TrendingUp,
+        title: `Taxa de Conversão em ${standardMetrics.conversionRate}%`,
+        description: 'Bom desempenho de conversão de oportunidades',
+        color: 'text-green-600 bg-green-50 border-green-200'
+      });
+    }
+    
+    if (standardMetrics.paidCharges > 0) {
+      alerts.push({
+        type: 'success',
+        icon: CheckCircle2,
+        title: `${standardMetrics.paidCharges} Cobranças Pagas`,
+        description: 'Recebimentos em dia este mês',
+        color: 'text-blue-600 bg-blue-50 border-blue-200'
+      });
+    }
+    
+    return alerts;
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 lg:p-8 max-w-7xl">
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="w-8 h-8 animate-spin mr-3 text-primary" />
+          <span className="text-muted-foreground">Carregando resultados...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 lg:p-8 max-w-7xl">
+        <div className="text-center py-12">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-red-600 mb-2">Erro ao carregar resultados</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={loadMetrics} variant="outline">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Tentar Novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const strategicAlerts = getStrategicAlerts();
 
   return (
     <div className="p-6 lg:p-8 space-y-8 max-w-7xl">
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground tracking-tight">Resultados</h1>
-          <p className="text-muted-foreground mt-1">Dashboard estratégico de performance</p>
+          <p className="text-muted-foreground mt-1">Acompanhe o desempenho do seu negócio</p>
         </div>
-
-        <div className="flex items-center gap-3">
-          <Select value={selectedClient} onValueChange={setSelectedClient}>
-            <SelectTrigger className="w-40">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Cliente" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os Clientes</SelectItem>
-              <SelectItem value="client1">Cliente 1</SelectItem>
-              <SelectItem value="client2">Cliente 2</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={period} onValueChange={(value: '7d' | '30d' | '90d') => setPeriod(value)}>
+        <div className="flex gap-2">
+          <Select value={period} onValueChange={(value: any) => setPeriod(value)}>
             <SelectTrigger className="w-32">
-              <Calendar className="w-4 h-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -244,258 +213,244 @@ export default function AnalyticsPage() {
               <SelectItem value="90d">90 dias</SelectItem>
             </SelectContent>
           </Select>
+          
+          <Button variant="outline" onClick={loadMetrics}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Atualizar
+          </Button>
+          
+          <Button onClick={() => navigate('/analytics/config')}>
+            <Plus className="w-4 h-4 mr-2" />
+            Personalizar
+          </Button>
         </div>
       </div>
 
-      {/* INSIGHTS AUTOMÁTICOS */}
-      {insights.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {insights.map((insight, index) => {
-            const IconComponent = insight.icon;
-            return (
-              <Card key={index} className={`border-l-4 ${
-                insight.type === 'warning' ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20' :
-                insight.type === 'success' ? 'border-l-green-500 bg-green-50/50 dark:bg-green-950/20' :
-                'border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20'
-              }`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <IconComponent className={`w-5 h-5 mt-0.5 ${
-                      insight.type === 'warning' ? 'text-amber-600' :
-                      insight.type === 'success' ? 'text-green-600' :
-                      'text-blue-600'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-sm text-foreground">{insight.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1">{insight.description}</p>
-                      <p className="text-xs font-medium text-primary mt-2">{insight.action}</p>
+      {/* SEÇÃO 1: LEITURA ESTRATÉGICA - Resumo Operacional */}
+      {strategicAlerts.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            Leitura Estratégica
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {strategicAlerts.map((alert, index) => {
+              const IconComponent = alert.icon;
+              return (
+                <Card key={index} className={`border ${alert.color}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-lg ${alert.color.split(' ')[1]}`}>
+                        <IconComponent className={`h-5 w-5 ${alert.color.split(' ')[0]}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm ${alert.color.split(' ')[0]}`}>
+                          {alert.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {alert.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* MÉTRICAS PRINCIPAIS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {consolidatedMetrics.map((m) => {
-          const IconComponent = m.icon;
-          return (
-            <Card key={m.label} className="bg-card border-none shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-6 text-center">
-                <div className="flex items-center justify-center mb-3">
-                  <IconComponent className="w-8 h-8 text-primary" />
+      {/* SEÇÃO 2: MÉTRICAS PADRÃO DO SISTEMA */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Métricas Principais</h2>
+          <Badge variant="outline" className="text-xs">Atualizado agora</Badge>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Novos Leads */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Novos Leads</p>
+                  <p className="text-2xl font-bold">{formatNumber(standardMetrics?.totalLeads || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Sem resposta</p>
                 </div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">{m.label}</p>
-                <p className="text-3xl font-bold text-foreground mb-1">{m.value}</p>
-                <p className="text-xs text-muted-foreground mb-2">{m.sub}</p>
-                {m.change !== null && (
-                  <div className={`flex items-center justify-center gap-1 text-xs font-medium ${
-                    m.change > 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {m.change > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {m.change > 0 ? '+' : ''}{m.change.toFixed(1)}% vs ontem
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* AÇÕES RÁPIDAS */}
-      <Card className="bg-card border-none shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-lg font-bold flex items-center gap-2">
-            <Target className="w-5 h-5" />
-            Ações Estratégicas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Button
-              variant="outline"
-              className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-primary/5"
-              onClick={() => navigate('/inbox')}
-            >
-              <MessageSquare className="w-6 h-6" />
-              <span className="font-medium">Ver Conversas</span>
-              <span className="text-xs text-muted-foreground">Gerenciar mensagens ativas</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-primary/5"
-              onClick={() => navigate('/opportunities')}
-            >
-              <Users className="w-6 h-6" />
-              <span className="font-medium">Ver Leads</span>
-              <span className="text-xs text-muted-foreground">Pipeline de oportunidades</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-primary/5"
-              onClick={() => navigate('/follow-up')}
-            >
-              <CheckCircle className="w-6 h-6" />
-              <span className="font-medium">Follow-ups</span>
-              <span className="text-xs text-muted-foreground">Ações comerciais pendentes</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* GRÁFICOS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* EVOLUÇÃO DIÁRIA */}
-        <Card className="bg-card border-none shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold">Evolução Diária</CardTitle>
-            <p className="text-sm text-muted-foreground">Conversas e leads por dia</p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis
-                    dataKey="date"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Line
-                    type="monotone"
-                    dataKey="conversations"
-                    name="Conversas"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={3}
-                    dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6, stroke: 'hsl(var(--primary))', strokeWidth: 2 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="leads"
-                    name="Leads"
-                    stroke="hsl(var(--brand-green-secondary))"
-                    strokeWidth={3}
-                    dot={{ fill: 'hsl(var(--brand-green-secondary))', strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6, stroke: 'hsl(var(--brand-green-secondary))', strokeWidth: 2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* CANAIS DE ORIGEM */}
-        <Card className="bg-card border-none shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold">Canais de Origem</CardTitle>
-            <p className="text-sm text-muted-foreground">Distribuição por plataforma</p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={channelData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {channelData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value) => [`${value}%`, 'Conversas']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex justify-center gap-6 mt-4">
-              {channelData.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm text-muted-foreground">{item.name}</span>
-                  <span className="text-sm font-medium">{item.value}%</span>
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Users className="h-6 w-6 text-blue-600" />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* PERFORMANCE MENSAL */}
-      <Card className="bg-card border-none shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-lg font-bold">Performance Mensal</CardTitle>
-          <p className="text-sm text-muted-foreground">Comparativo conversas vs leads</p>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'hsl(var(--secondary)/0.5)' }} />
-                <Bar dataKey="conversas" name="Conversas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="leads" name="Leads" fill="hsl(var(--brand-green-secondary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* PIPELINE DE VENDAS */}
-      <Card className="bg-card border-none shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-lg font-bold flex items-center justify-between">
-            <span>Pipeline de Vendas</span>
-            <Badge variant="secondary" className="text-xs">
-              R$ {metrics.totalEstimatedValue.toLocaleString()} estimado
-            </Badge>
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">Status dos leads qualificados</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[
-              { stage: 'Descoberta', count: mockLeads.filter(l => l.stage === 'Descoberta').length, color: 'bg-blue-500' },
-              { stage: 'Qualificação', count: mockLeads.filter(l => l.stage === 'Qualificação').length, color: 'bg-purple-500' },
-              { stage: 'Proposta', count: mockLeads.filter(l => l.stage === 'Proposta').length, color: 'bg-cyan-500' },
-              { stage: 'Negociação', count: mockLeads.filter(l => l.stage === 'Negociação').length, color: 'bg-yellow-500' },
-              { stage: 'Fechamento', count: mockLeads.filter(l => l.stage === 'Fechamento').length, color: 'bg-green-500' },
-            ].map((item) => (
-              <div key={item.stage} className="text-center">
-                <div className={`w-full h-20 ${item.color} rounded-lg flex items-center justify-center mb-2`}>
-                  <span className="text-2xl font-bold text-white">{item.count}</span>
-                </div>
-                <p className="text-sm font-medium text-foreground">{item.stage}</p>
-                <p className="text-xs text-muted-foreground">leads</p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Oportunidades Abertas */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Oportunidades</p>
+                  <p className="text-2xl font-bold">{formatNumber(standardMetrics?.opportunitiesOpen || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Em andamento</p>
+                </div>
+                <div className="p-3 bg-purple-100 rounded-lg">
+                  <Briefcase className="h-6 w-6 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Taxa de Conversão */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Conversão</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {formatNumber(standardMetrics?.conversionRate || 0)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Oportunidades fechadas</p>
+                </div>
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <TrendingUp className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pipeline */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Pipeline</p>
+                  <p className="text-2xl font-bold">{formatCurrency(standardMetrics?.pipelineValue || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Valor em aberto</p>
+                </div>
+                <div className="p-3 bg-yellow-100 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-yellow-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Follow-ups Pendentes */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Follow-ups</p>
+                  <p className="text-2xl font-bold text-orange-600">{formatNumber(standardMetrics?.followUpsPending || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Pendentes / Atrasados</p>
+                </div>
+                <div className="p-3 bg-orange-100 rounded-lg">
+                  <Phone className="h-6 w-6 text-orange-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cobranças Pagas */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Recebimentos</p>
+                  <p className="text-2xl font-bold text-green-600">{formatNumber(standardMetrics?.paidCharges || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Cobranças pagas</p>
+                </div>
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <CheckCircle2 className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cobranças Pendentes */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">A Receber</p>
+                  <p className="text-2xl font-bold text-red-600">{formatNumber(standardMetrics?.pendingCharges || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Cobranças pendentes</p>
+                </div>
+                <div className="p-3 bg-red-100 rounded-lg">
+                  <Clock className="h-6 w-6 text-red-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Tempo de Resposta */}
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Resposta</p>
+                  <p className="text-2xl font-bold">{Math.round(standardMetrics?.avgResponseTime || 0)}min</p>
+                  <p className="text-xs text-muted-foreground mt-1">Tempo médio</p>
+                </div>
+                <div className="p-3 bg-gray-100 rounded-lg">
+                  <MessageSquare className="h-6 w-6 text-gray-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* SEÇÃO 3: MÉTRICAS PERSONALIZADAS */}
+      {customMetrics.length > 0 ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Métricas Personalizadas</h2>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/analytics/config')}>
+              Gerenciar
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {customMetrics.map((metric) => (
+              <Card key={metric.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">{metric.name}</p>
+                      <p className="text-2xl font-bold mt-1">
+                        {metric.metric_type === 'sum' || metric.metric_type === 'average' 
+                          ? formatCurrency(customValues[metric.id] || 0)
+                          : metric.metric_type === 'percentage'
+                            ? `${(customValues[metric.id] || 0).toFixed(1)}%`
+                            : formatNumber(customValues[metric.id] || 0)
+                        }
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">{metric.description}</p>
+                    </div>
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {metric.data_source}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      ) : (
+        /* Estado Vazio - Métricas Personalizadas */
+        <Card className="bg-muted/50 border-dashed">
+          <CardContent className="text-center py-8">
+            <Target className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
+            <h3 className="text-base font-medium text-muted-foreground">Sem métricas personalizadas</h3>
+            <p className="text-sm text-muted-foreground/70 mt-1 mb-4">
+              Crie métricas específicas para o seu negócio
+            </p>
+            <Button variant="outline" size="sm" onClick={() => navigate('/analytics/config')}>
+              <Plus className="w-4 h-4 mr-2" />
+              Criar Métrica Personalizada
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
